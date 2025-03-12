@@ -4,7 +4,7 @@ Changelog
 Development
 -----------
 
-* Placeholder
+* Update internal database (2025-03-12).
 
 0.3.29
 ------
