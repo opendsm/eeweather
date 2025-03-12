@@ -1,4 +1,4 @@
-FROM python:3.10.10-bullseye
+FROM python:3.12-bookworm
 # bullseye required for GEOS>3.7.1 which is needed for newest cartopy
 
 RUN apt-get update \
