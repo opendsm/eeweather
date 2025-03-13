@@ -316,7 +316,7 @@ def fetch_isd_hourly_temp_data(usaf_id, year):
         ts.resample("Min")
         .mean()
         .interpolate(method="linear", limit=60, limit_direction="both")
-        .resample("H")
+        .resample("h")
         .mean()
     )
 
@@ -401,7 +401,7 @@ def request_text(url):  # pragma: no cover
 
 
 def fetch_hourly_normalized_temp_data(usaf_id, url, source_name):
-    index = pd.date_range("1900-01-01 00:00", "1900-12-31 23:00", freq="H", tz=pytz.UTC)
+    index = pd.date_range("1900-01-01 00:00", "1900-12-31 23:00", freq="h", tz=pytz.UTC)
     ts = pd.Series(None, index=index, dtype=float)
 
     lines = eeweather.mockable.request_text(url).splitlines()
@@ -552,7 +552,7 @@ def validate_cz2010_hourly_temp_data_cache(usaf_id):
 
 
 def _serialize(ts, freq):
-    if freq == "H":
+    if freq == "h":
         dt_format = "%Y%m%d%H"
     elif freq == "D":
         dt_format = "%Y%m%d"
@@ -566,7 +566,7 @@ def _serialize(ts, freq):
 
 
 def serialize_isd_hourly_temp_data(ts):
-    return _serialize(ts, "H")
+    return _serialize(ts, "h")
 
 
 def serialize_isd_daily_temp_data(ts):
@@ -578,15 +578,15 @@ def serialize_gsod_daily_temp_data(ts):
 
 
 def serialize_tmy3_hourly_temp_data(ts):
-    return _serialize(ts, "H")
+    return _serialize(ts, "h")
 
 
 def serialize_cz2010_hourly_temp_data(ts):
-    return _serialize(ts, "H")
+    return _serialize(ts, "h")
 
 
 def _deserialize(data, freq):
-    if freq == "H":
+    if freq == "h":
         dt_format = "%Y%m%d%H"
     elif freq == "D":
         dt_format = "%Y%m%d"
@@ -601,7 +601,7 @@ def _deserialize(data, freq):
 
 
 def deserialize_isd_hourly_temp_data(data):
-    return _deserialize(data, "H")
+    return _deserialize(data, "h")
 
 
 def deserialize_isd_daily_temp_data(data):
@@ -613,11 +613,11 @@ def deserialize_gsod_daily_temp_data(data):
 
 
 def deserialize_tmy3_hourly_temp_data(data):
-    return _deserialize(data, "H")
+    return _deserialize(data, "h")
 
 
 def deserialize_cz2010_hourly_temp_data(data):
-    return _deserialize(data, "H")
+    return _deserialize(data, "h")
 
 
 def read_isd_hourly_temp_data_from_cache(usaf_id, year):
@@ -855,7 +855,7 @@ def load_isd_hourly_temp_data(
         ]
 
     # get raw data from loaded years into hourly form
-    ts = pd.concat(data).resample("H").mean()
+    ts = pd.concat(data).resample("h").mean()
 
     # whittle down to desired range
     ts = ts[start:end]
@@ -871,7 +871,7 @@ def load_isd_hourly_temp_data(
             ts_start += timedelta(seconds=3600)
         ts_end = datetime(end.year, end.month, end.day, end.hour, tzinfo=pytz.UTC)
         # fill in gaps
-        ts = ts.reindex(pd.date_range(ts_start, ts_end, freq="H", tz=pytz.UTC))
+        ts = ts.reindex(pd.date_range(ts_start, ts_end, freq="h", tz=pytz.UTC))
     return ts, warnings
 
 
@@ -973,13 +973,13 @@ def load_tmy3_hourly_temp_data(
         data.append(pd.Series(single_year_data.values, index=single_year_index))
 
     # get raw data
-    ts = pd.concat(data).resample("H").mean()
+    ts = pd.concat(data).resample("h").mean()
 
     # whittle down
     ts = ts[start:end]
 
     # fill in gaps
-    ts = ts.reindex(pd.date_range(start, end, freq="H", tz=pytz.UTC))
+    ts = ts.reindex(pd.date_range(start, end, freq="h", tz=pytz.UTC))
     return ts
 
 
@@ -1006,13 +1006,13 @@ def load_cz2010_hourly_temp_data(
         data.append(pd.Series(single_year_data.values, index=single_year_index))
 
     # get raw data
-    ts = pd.concat(data).resample("H").mean()
+    ts = pd.concat(data).resample("h").mean()
 
     # whittle down
     ts = ts[start:end]
 
     # fill in gaps
-    ts = ts.reindex(pd.date_range(start, end, freq="H", tz=pytz.UTC))
+    ts = ts.reindex(pd.date_range(start, end, freq="h", tz=pytz.UTC))
     return ts
 
 
@@ -1026,7 +1026,7 @@ def load_cached_isd_hourly_temp_data(usaf_id):
     ]
     if data == []:
         return None
-    return pd.concat(data).resample("H").mean()
+    return pd.concat(data).resample("h").mean()
 
 
 def load_cached_isd_daily_temp_data(usaf_id):

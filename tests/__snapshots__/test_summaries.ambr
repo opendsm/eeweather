@@ -1,0 +1,13 @@
+# serializer version: 1
+# name: test_get_isd_station_usaf_ids
+  4845
+# ---
+# name: test_get_isd_station_usaf_ids_by_state
+  77
+# ---
+# name: test_get_zcta_ids
+  33144
+# ---
+# name: test_get_zcta_ids_by_state
+  1763
+# ---
