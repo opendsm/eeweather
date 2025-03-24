@@ -20,6 +20,7 @@
 import tempfile
 from eeweather.cache import KeyValueStore, get_datetime_if_exists
 from datetime import datetime
+from datetime import UTC
 import pytz
 
 import pytest
@@ -45,7 +46,7 @@ def test_key_value_store(s):
     assert data["b"][1] == "two"
     assert data["b"][2] == 3.0
     dt1 = s.key_updated("a")
-    assert dt1.date() == datetime.utcnow().date()
+    assert dt1.date() == datetime.now(UTC).date()
 
     # update key 'a'
     s.save_json("a", ["updated"])

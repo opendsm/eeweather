@@ -4,7 +4,9 @@ Changelog
 Development
 -----------
 
-* Placeholder
+* Remove deprecated `typing` dependency
+* Switch from snapshottest to syrupy for snapshot testing.
+* Update internal database (2025-03-12).
 
 0.3.29
 ------

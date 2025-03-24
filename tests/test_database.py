@@ -58,7 +58,7 @@ def test_isd_station_metadata_table_count(snapshot):
     cur = conn.cursor()
     cur.execute(""" select count(*) from isd_station_metadata """)
     (count,) = cur.fetchone()
-    snapshot.assert_match(count, "count")
+    assert snapshot == count
 
 
 def test_isd_station_metadata_table_content(snapshot):
@@ -68,7 +68,7 @@ def test_isd_station_metadata_table_content(snapshot):
     cur.execute(""" select * from isd_station_metadata where quality='high' limit 1 """)
     row = cur.fetchone()
     data = {desc[0]: value for value, desc in zip(row, cur.description)}
-    snapshot.assert_match(data, "data")
+    assert snapshot == data
 
 
 def test_isd_file_metadata_table_count(snapshot):
@@ -77,7 +77,7 @@ def test_isd_file_metadata_table_count(snapshot):
     cur = conn.cursor()
     cur.execute(""" select count(*) from isd_file_metadata """)
     (count,) = cur.fetchone()
-    snapshot.assert_match(count, "count")
+    assert snapshot == count
 
 
 def test_isd_file_metadata_table_content(snapshot):
@@ -87,7 +87,7 @@ def test_isd_file_metadata_table_content(snapshot):
     cur.execute(""" select * from isd_file_metadata limit 1""")
     row = cur.fetchone()
     data = {desc[0]: value for value, desc in zip(row, cur.description)}
-    snapshot.assert_match(data, "data")
+    assert snapshot == data
 
 
 def test_zcta_metadata_table_count():

@@ -144,7 +144,7 @@ def test_get_isd_station_metadata():
         "latitude": "+34.024",
         "longitude": "-118.291",
         "name": "DOWNTOWN L.A./USC CAMPUS",
-        "quality": "high",
+        "quality": "low",
         "recent_wban_id": "93134",
         "state": "CA",
         "usaf_id": "722874",
@@ -235,12 +235,12 @@ def test_get_isd_filenames_bad_usaf_id():
 
 def test_get_isd_filenames_single_year(snapshot):
     filenames = get_isd_filenames("722860", 2007)
-    snapshot.assert_match(filenames, "filenames")
+    assert snapshot == filenames
 
 
 def test_get_isd_filenames_multiple_year(snapshot):
     filenames = get_isd_filenames("722860")
-    snapshot.assert_match(filenames, "filenames")
+    assert snapshot == filenames
 
 
 def test_get_isd_filenames_future_year():
@@ -258,13 +258,13 @@ def test_get_isd_filenames_with_host():
 def test_isd_station_get_isd_filenames(snapshot):
     station = ISDStation("722860")
     filenames = station.get_isd_filenames()
-    snapshot.assert_match(filenames, "filenames")
+    assert snapshot == filenames
 
 
 def test_isd_station_get_isd_filenames_with_year(snapshot):
     station = ISDStation("722860")
     filenames = station.get_isd_filenames(2007)
-    snapshot.assert_match(filenames, "filenames")
+    assert snapshot == filenames
 
 
 def test_isd_station_get_isd_filenames_with_host():
@@ -283,12 +283,12 @@ def test_get_gsod_filenames_bad_usaf_id():
 
 def test_get_gsod_filenames_single_year(snapshot):
     filenames = get_gsod_filenames("722860", 2007)
-    snapshot.assert_match(filenames, "filenames")
+    assert snapshot == filenames
 
 
 def test_get_gsod_filenames_multiple_year(snapshot):
     filenames = get_gsod_filenames("722860")
-    snapshot.assert_match(filenames, "filenames")
+    assert snapshot == filenames
 
 
 def test_get_gsod_filenames_future_year():
@@ -306,13 +306,13 @@ def test_get_gsod_filenames_with_host():
 def test_isd_station_get_gsod_filenames(snapshot):
     station = ISDStation("722860")
     filenames = station.get_gsod_filenames()
-    snapshot.assert_match(filenames, "filenames")
+    assert snapshot == filenames
 
 
 def test_isd_station_get_gsod_filenames_with_year(snapshot):
     station = ISDStation("722860")
     filenames = station.get_gsod_filenames(2007)
-    snapshot.assert_match(filenames, "filenames")
+    assert snapshot == filenames
 
 
 def test_isd_station_get_gsod_filenames_with_host():
@@ -344,6 +344,7 @@ def test_get_isd_file_metadata():
         {"usaf_id": "722874", "wban_id": "93134", "year": "2022"},
         {"usaf_id": "722874", "wban_id": "93134", "year": "2023"},
         {"usaf_id": "722874", "wban_id": "93134", "year": "2024"},
+        {"usaf_id": "722874", "wban_id": "93134", "year": "2025"},
     ]
 
     with pytest.raises(UnrecognizedUSAFIDError) as excinfo:
@@ -373,6 +374,7 @@ def test_isd_station_get_isd_file_metadata():
         {"usaf_id": "722874", "wban_id": "93134", "year": "2022"},
         {"usaf_id": "722874", "wban_id": "93134", "year": "2023"},
         {"usaf_id": "722874", "wban_id": "93134", "year": "2024"},
+        {"usaf_id": "722874", "wban_id": "93134", "year": "2025"},
     ]
 
 
@@ -964,7 +966,7 @@ def test_isd_station_serialize_cz2010_hourly_temp_data():
 def test_deserialize_isd_hourly_temp_data():
     ts = deserialize_isd_hourly_temp_data([["2017010100", 1]])
     assert ts.sum() == 1
-    assert ts.index.freq.name == "H"
+    assert ts.index.freq.name == "h"
 
 
 def test_deserialize_isd_daily_temp_data():
@@ -982,13 +984,13 @@ def test_deserialize_gsod_daily_temp_data():
 def test_deserialize_tmy3_hourly_temp_data():
     ts = deserialize_tmy3_hourly_temp_data([["2017010100", 1]])
     assert ts.sum() == 1
-    assert ts.index.freq.name == "H"
+    assert ts.index.freq.name == "h"
 
 
 def test_deserialize_cz2010_hourly_temp_data():
     ts = deserialize_cz2010_hourly_temp_data([["2017010100", 1]])
     assert ts.sum() == 1
-    assert ts.index.freq.name == "H"
+    assert ts.index.freq.name == "h"
 
 
 # station deserialize
@@ -996,7 +998,7 @@ def test_isd_station_deserialize_isd_hourly_temp_data():
     station = ISDStation("722874")
     ts = station.deserialize_isd_hourly_temp_data([["2017010100", 1]])
     assert ts.sum() == 1
-    assert ts.index.freq.name == "H"
+    assert ts.index.freq.name == "h"
 
 
 def test_isd_station_deserialize_isd_daily_temp_data():
@@ -1017,14 +1019,14 @@ def test_isd_station_deserialize_tmy3_hourly_temp_data():
     station = ISDStation("722880")
     ts = station.deserialize_tmy3_hourly_temp_data([["2017010100", 1]])
     assert ts.sum() == 1
-    assert ts.index.freq.name == "H"
+    assert ts.index.freq.name == "h"
 
 
 def test_isd_station_deserialize_cz2010_hourly_temp_data():
     station = ISDStation("722880")
     ts = station.deserialize_cz2010_hourly_temp_data([["2017010100", 1]])
     assert ts.sum() == 1
-    assert ts.index.freq.name == "H"
+    assert ts.index.freq.name == "h"
 
 
 # write read destroy
@@ -1362,9 +1364,9 @@ def test_load_isd_hourly_temp_data(monkeypatch_noaa_ftp, monkeypatch_key_value_s
     end = datetime(2007, 4, 3, tzinfo=pytz.UTC)
     ts, warnings = load_isd_hourly_temp_data("722874", start, end)
     assert ts.index[0] == start
-    assert pd.isnull(ts[0])
+    assert pd.isnull(ts.iloc[0])
     assert ts.index[-1] == end
-    assert pd.notnull(ts[-1])
+    assert pd.notnull(ts.iloc[-1])
 
 
 def test_load_isd_hourly_temp_data_non_normalized_dates(
@@ -1374,9 +1376,9 @@ def test_load_isd_hourly_temp_data_non_normalized_dates(
     end = datetime(2007, 4, 3, 12, 13, 14, tzinfo=pytz.UTC)
     ts, warnings = load_isd_hourly_temp_data("722874", start, end)
     assert ts.index[0] == datetime(2006, 1, 3, 12, tzinfo=pytz.UTC)
-    assert pd.isnull(ts[0])
+    assert pd.isnull(ts.iloc[0])
     assert ts.index[-1] == datetime(2007, 4, 3, 12, tzinfo=pytz.UTC)
-    assert pd.notnull(ts[-1])
+    assert pd.notnull(ts.iloc[-1])
 
 
 def test_load_isd_daily_temp_data(monkeypatch_noaa_ftp, monkeypatch_key_value_store):
@@ -1384,9 +1386,9 @@ def test_load_isd_daily_temp_data(monkeypatch_noaa_ftp, monkeypatch_key_value_st
     end = datetime(2007, 4, 3, tzinfo=pytz.UTC)
     ts = load_isd_daily_temp_data("722874", start, end)
     assert ts.index[0] == start
-    assert pd.isnull(ts[0])
+    assert pd.isnull(ts.iloc[0])
     assert ts.index[-1] == end
-    assert pd.notnull(ts[-1])
+    assert pd.notnull(ts.iloc[-1])
 
 
 def test_load_isd_daily_temp_data_non_normalized_dates(
@@ -1396,9 +1398,9 @@ def test_load_isd_daily_temp_data_non_normalized_dates(
     end = datetime(2007, 4, 3, 12, 13, 14, tzinfo=pytz.UTC)
     ts = load_isd_daily_temp_data("722874", start, end)
     assert ts.index[0] == datetime(2006, 1, 4, tzinfo=pytz.UTC)
-    assert pd.isnull(ts[0])
+    assert pd.isnull(ts.iloc[0])
     assert ts.index[-1] == datetime(2007, 4, 3, tzinfo=pytz.UTC)
-    assert pd.notnull(ts[-1])
+    assert pd.notnull(ts.iloc[-1])
 
 
 def test_load_gsod_daily_temp_data(monkeypatch_noaa_ftp, monkeypatch_key_value_store):
@@ -1406,9 +1408,9 @@ def test_load_gsod_daily_temp_data(monkeypatch_noaa_ftp, monkeypatch_key_value_s
     end = datetime(2007, 4, 3, tzinfo=pytz.UTC)
     ts = load_gsod_daily_temp_data("722874", start, end)
     assert ts.index[0] == start
-    assert pd.isnull(ts[0])
+    assert pd.isnull(ts.iloc[0])
     assert ts.index[-1] == end
-    assert pd.notnull(ts[-1])
+    assert pd.notnull(ts.iloc[-1])
 
 
 def test_load_gsod_daily_temp_data_non_normalized_dates(
@@ -1418,9 +1420,9 @@ def test_load_gsod_daily_temp_data_non_normalized_dates(
     end = datetime(2007, 4, 3, 12, 13, 14, tzinfo=pytz.UTC)
     ts = load_gsod_daily_temp_data("722874", start, end)
     assert ts.index[0] == datetime(2006, 1, 4, tzinfo=pytz.UTC)
-    assert pd.isnull(ts[0])
+    assert pd.isnull(ts.iloc[0])
     assert ts.index[-1] == datetime(2007, 4, 3, tzinfo=pytz.UTC)
-    assert pd.notnull(ts[-1])
+    assert pd.notnull(ts.iloc[-1])
 
 
 def test_load_tmy3_hourly_temp_data(
@@ -1430,9 +1432,9 @@ def test_load_tmy3_hourly_temp_data(
     end = datetime(2007, 4, 3, tzinfo=pytz.UTC)
     ts = load_tmy3_hourly_temp_data("722880", start, end)
     assert ts.index[0] == start
-    assert pd.notnull(ts[0])
+    assert pd.notnull(ts.iloc[0])
     assert ts.index[-1] == end
-    assert pd.notnull(ts[-1])
+    assert pd.notnull(ts.iloc[-1])
 
 
 def test_load_cz2010_hourly_temp_data(
@@ -1444,7 +1446,7 @@ def test_load_cz2010_hourly_temp_data(
     assert ts.index[0] == start
     assert pd.notnull(ts[1])
     assert ts.index[-1] == end
-    assert pd.notnull(ts[-1])
+    assert pd.notnull(ts.iloc[-1])
 
 
 # station load data between dates
@@ -1805,9 +1807,9 @@ def test_load_isd_hourly_temp_data_missing_years(
         usaf_id, start, end, error_on_missing_years=False
     )
     assert ts.index[0] == start
-    assert pd.isnull(ts[0])
+    assert pd.isnull(ts.iloc[0])
     assert ts.index[-1] == end
-    assert pd.notnull(ts[-1])
+    assert pd.notnull(ts.iloc[-1])
 
 
 def test_isd_station_load_isd_hourly_temp_data_missing_years(
@@ -1823,6 +1825,6 @@ def test_isd_station_load_isd_hourly_temp_data_missing_years(
         start, end, error_on_missing_years=False
     )
     assert ts.index[0] == start
-    assert pd.isnull(ts[0])
+    assert pd.isnull(ts.iloc[0])
     assert ts.index[-1] == end
-    assert pd.notnull(ts[-1])
+    assert pd.notnull(ts.iloc[-1])

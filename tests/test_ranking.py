@@ -39,7 +39,7 @@ def lat_long_africa():
 def test_rank_stations_no_filter(lat_long_fresno, snapshot):
     lat, lng = lat_long_fresno
     df = rank_stations(lat, lng)
-    snapshot.assert_match(df.shape, "df.shape")
+    assert snapshot == df.shape
     assert list(df.columns) == [
         "rank",
         "distance_meters",
@@ -57,7 +57,7 @@ def test_rank_stations_no_filter(lat_long_fresno, snapshot):
         "is_cz2010",
         "difference_elevation_meters",
     ]
-    assert round(df.distance_meters.iloc[0]) == 3008.0
+    assert round(df.distance_meters.iloc[0]) == 2723
     assert round(df.distance_meters.iloc[-10]) == 16565963.0
     assert pd.isnull(df.distance_meters.iloc[-1]) is True
 
@@ -65,95 +65,95 @@ def test_rank_stations_no_filter(lat_long_fresno, snapshot):
 def test_rank_stations_match_climate_zones_not_null(lat_long_fresno, snapshot):
     lat, lng = lat_long_fresno
     df = rank_stations(lat, lng, match_iecc_climate_zone=True)
-    snapshot.assert_match(df.shape, "match_iecc_climate_zone")
+    assert df.shape == snapshot(name="match_iecc_climate_zone")
 
     df = rank_stations(lat, lng, match_iecc_moisture_regime=True)
-    snapshot.assert_match(df.shape, "match_iecc_moisture_regime")
+    assert df.shape == snapshot(name="match_iecc_moisture_regime")
 
     df = rank_stations(lat, lng, match_ba_climate_zone=True)
-    snapshot.assert_match(df.shape, "match_ba_climate_zone")
+    assert df.shape == snapshot(name="match_ba_climate_zone")
 
     df = rank_stations(lat, lng, match_ca_climate_zone=True)
-    snapshot.assert_match(df.shape, "match_ca_climate_zone")
+    assert df.shape == snapshot(name="match_ca_climate_zone")
 
 
 def test_rank_stations_match_climate_zones_null(lat_long_africa, snapshot):
     lat, lng = lat_long_africa
     df = rank_stations(lat, lng, match_iecc_climate_zone=True)
-    snapshot.assert_match(df.shape, "match_iecc_climate_zone")
+    assert df.shape == snapshot(name="match_iecc_climate_zone")
 
     df = rank_stations(lat, lng, match_iecc_moisture_regime=True)
-    snapshot.assert_match(df.shape, "match_iecc_moisture_regime")
+    assert df.shape == snapshot(name="match_iecc_moisture_regime")
 
     df = rank_stations(lat, lng, match_ba_climate_zone=True)
-    snapshot.assert_match(df.shape, "match_ba_climate_zone")
+    assert df.shape == snapshot(name="match_ba_climate_zone")
 
     df = rank_stations(lat, lng, match_ca_climate_zone=True)
-    snapshot.assert_match(df.shape, "match_ca_climate_zone")
+    assert df.shape == snapshot(name="match_ca_climate_zone")
 
 
 def test_rank_stations_match_state(lat_long_fresno, snapshot):
     lat, lng = lat_long_fresno
     df = rank_stations(lat, lng, site_state="CA")
-    snapshot.assert_match(df.shape, "site_state=CA, match_state=False")
+    assert df.shape == snapshot(name="site_state=CA, match_state=False")
 
     df = rank_stations(lat, lng, site_state="CA", match_state=True)
-    snapshot.assert_match(df.shape, "site_state=CA, match_state=True")
+    assert df.shape == snapshot(name="site_state=CA, match_state=True")
 
     df = rank_stations(lat, lng, site_state=None, match_state=True)
-    snapshot.assert_match(df.shape, "site_state=None, match_state=True")
+    assert df.shape == snapshot(name="site_state=None, match_state=True")
 
 
 def test_rank_stations_is_tmy3(lat_long_fresno, snapshot):
     lat, lng = lat_long_fresno
     df = rank_stations(lat, lng, is_tmy3=True)
-    snapshot.assert_match(df.shape, "is_tmy3=True")
+    assert df.shape == snapshot(name="is_tmy3=True")
 
     df = rank_stations(lat, lng, is_tmy3=False)
-    snapshot.assert_match(df.shape, "is_tmy3=False")
+    assert df.shape == snapshot(name="is_tmy3=False")
 
 
 def test_rank_stations_is_cz2010(lat_long_fresno, snapshot):
     lat, lng = lat_long_fresno
     df = rank_stations(lat, lng, is_cz2010=True)
-    snapshot.assert_match(df.shape, "is_cz2010=True")
+    assert df.shape == snapshot(name="is_cz2010=True")
 
     df = rank_stations(lat, lng, is_cz2010=False)
-    snapshot.assert_match(df.shape, "is_cz2010=False")
+    assert df.shape == snapshot(name="is_cz2010=False")
 
 
 def test_rank_stations_minimum_quality(lat_long_fresno, snapshot):
     lat, lng = lat_long_fresno
     df = rank_stations(lat, lng, minimum_quality="low")
-    snapshot.assert_match(df.shape, "minimum_quality=low")
+    assert df.shape == snapshot(name="minimum_quality=low")
 
     df = rank_stations(lat, lng, minimum_quality="medium")
-    snapshot.assert_match(df.shape, "minimum_quality=medium")
+    assert df.shape == snapshot(name="minimum_quality=medium")
 
     df = rank_stations(lat, lng, minimum_quality="high")
-    snapshot.assert_match(df.shape, "minimum_quality=high")
+    assert df.shape == snapshot(name="minimum_quality=high")
 
 
 def test_rank_stations_minimum_tmy3_class(lat_long_fresno, snapshot):
     lat, lng = lat_long_fresno
     df = rank_stations(lat, lng, minimum_tmy3_class="III")
-    snapshot.assert_match(df.shape, "minimum_tmy3_class=III")
+    assert df.shape == snapshot(name="minimum_tmy3_class=III")
 
     df = rank_stations(lat, lng, minimum_tmy3_class="II")
-    snapshot.assert_match(df.shape, "minimum_tmy3_class=II")
+    assert df.shape == snapshot(name="minimum_tmy3_class=II")
 
     df = rank_stations(lat, lng, minimum_tmy3_class="I")
-    snapshot.assert_match(df.shape, "minimum_tmy3_class=I")
+    assert df.shape == snapshot(name="minimum_tmy3_class=I")
 
 
 def test_rank_stations_max_distance_meters(lat_long_fresno, snapshot):
     lat, lng = lat_long_fresno
 
     df = rank_stations(lat, lng, max_distance_meters=200000)
-    snapshot.assert_match(df.shape, "max_distance_meters=200000")
+    assert df.shape == snapshot(name="max_distance_meters=200000")
 
     df = rank_stations(lat, lng, max_distance_meters=50000)
-    snapshot.assert_match(df.shape, "max_distance_meters=50000")
+    assert df.shape == snapshot(name="max_distance_meters=50000")
 
 
 def test_rank_stations_max_difference_elevation_meters(lat_long_fresno, snapshot):
@@ -161,24 +161,18 @@ def test_rank_stations_max_difference_elevation_meters(lat_long_fresno, snapshot
 
     # no site_elevation
     df = rank_stations(lat, lng, max_difference_elevation_meters=200)
-    snapshot.assert_match(df.shape, "max_difference_elevation_meters=200")
+    assert df.shape == snapshot(name="max_difference_elevation_meters=200")
 
     df = rank_stations(lat, lng, site_elevation=0, max_difference_elevation_meters=200)
-    snapshot.assert_match(
-        df.shape, "site_elevation=0, max_difference_elevation_meters=200"
-    )
+    assert df.shape == snapshot(name="site_elevation=0, max_difference_elevation_meters=200")
 
     df = rank_stations(lat, lng, site_elevation=0, max_difference_elevation_meters=50)
-    snapshot.assert_match(
-        df.shape, "site_elevation=0, max_difference_elevation_meters=50"
-    )
+    assert df.shape == snapshot(name="site_elevation=0, max_difference_elevation_meters=50")
 
     df = rank_stations(
         lat, lng, site_elevation=1000, max_difference_elevation_meters=50
     )
-    snapshot.assert_match(
-        df.shape, "site_elevation=1000, max_difference_elevation_meters=50"
-    )
+    assert df.shape == snapshot(name="site_elevation=1000, max_difference_elevation_meters=50")
 
 
 @pytest.fixture
@@ -255,7 +249,7 @@ def monkeypatch_load_isd_hourly_temp_data(monkeypatch):
         normalized_end = datetime(
             end.year, end.month, end.day, end.hour, tzinfo=pytz.UTC
         )
-        index = pd.date_range(normalized_start, normalized_end, freq="H", tz="UTC")
+        index = pd.date_range(normalized_start, normalized_end, freq="h", tz="UTC")
 
         # simulate missing data
         if station.usaf_id in ("723890", "723896"):
@@ -291,7 +285,7 @@ def test_select_station_full_data(cz_candidates, monkeypatch_load_isd_hourly_tem
 @pytest.fixture
 def monkeypatch_load_isd_hourly_temp_data_with_error(monkeypatch):
     def load_isd_hourly_temp_data(station, start, end, fetch_from_web=True):
-        index = pd.date_range(start, end, freq="H", tz="UTC")
+        index = pd.date_range(start, end, freq="h", tz="UTC")
         if station.usaf_id == "723890":
             raise ISDDataNotAvailableError(
                 "723890", start.year
@@ -326,7 +320,7 @@ def test_select_station_with_isd_data_not_available_error(
 @pytest.fixture
 def monkeypatch_load_isd_hourly_temp_data_with_empty(monkeypatch):
     def load_isd_hourly_temp_data(station, start, end, fetch_from_web=True):
-        index = pd.date_range(start, end, freq="H", tz="UTC")
+        index = pd.date_range(start, end, freq="h", tz="UTC")
         if station.usaf_id == "723890":
             return pd.Series(1, index=index)[:0], []
         elif station.usaf_id == "747020":
@@ -353,7 +347,7 @@ def test_select_station_with_empty_tempC(
     station, warnings = select_station(
         cz_candidates, coverage_range=(start, end), min_fraction_coverage=0.8
     )
-    snapshot.assert_match(station.usaf_id, "station_id")
+    assert station.usaf_id == snapshot
 
 
 def test_select_station_distance_warnings_check(lat_long_africa):
@@ -382,4 +376,4 @@ def test_select_station_with_second_level_dates(
     end = datetime(2018, 1, 1, 12, 13, 14, tzinfo=pytz.UTC)
 
     station, warnings = select_station(cz_candidates, coverage_range=(start, end))
-    snapshot.assert_match(station.usaf_id, "station_id")
+    assert station.usaf_id == snapshot

@@ -1,0 +1,175 @@
+# serializer version: 1
+# name: test_rank_stations_is_cz2010[is_cz2010=False]
+  tuple(
+    4759,
+    15,
+  )
+# ---
+# name: test_rank_stations_is_cz2010[is_cz2010=True]
+  tuple(
+    86,
+    15,
+  )
+# ---
+# name: test_rank_stations_is_tmy3[is_tmy3=False]
+  tuple(
+    3826,
+    15,
+  )
+# ---
+# name: test_rank_stations_is_tmy3[is_tmy3=True]
+  tuple(
+    1019,
+    15,
+  )
+# ---
+# name: test_rank_stations_match_climate_zones_not_null[match_ba_climate_zone]
+  tuple(
+    282,
+    15,
+  )
+# ---
+# name: test_rank_stations_match_climate_zones_not_null[match_ca_climate_zone]
+  tuple(
+    10,
+    15,
+  )
+# ---
+# name: test_rank_stations_match_climate_zones_not_null[match_iecc_climate_zone]
+  tuple(
+    743,
+    15,
+  )
+# ---
+# name: test_rank_stations_match_climate_zones_not_null[match_iecc_moisture_regime]
+  tuple(
+    715,
+    15,
+  )
+# ---
+# name: test_rank_stations_match_climate_zones_null[match_ba_climate_zone]
+  tuple(
+    1504,
+    15,
+  )
+# ---
+# name: test_rank_stations_match_climate_zones_null[match_ca_climate_zone]
+  tuple(
+    4611,
+    15,
+  )
+# ---
+# name: test_rank_stations_match_climate_zones_null[match_iecc_climate_zone]
+  tuple(
+    1502,
+    15,
+  )
+# ---
+# name: test_rank_stations_match_climate_zones_null[match_iecc_moisture_regime]
+  tuple(
+    1928,
+    15,
+  )
+# ---
+# name: test_rank_stations_match_state[site_state=CA, match_state=False]
+  tuple(
+    4845,
+    15,
+  )
+# ---
+# name: test_rank_stations_match_state[site_state=CA, match_state=True]
+  tuple(
+    298,
+    15,
+  )
+# ---
+# name: test_rank_stations_match_state[site_state=None, match_state=True]
+  tuple(
+    1141,
+    15,
+  )
+# ---
+# name: test_rank_stations_max_difference_elevation_meters[max_difference_elevation_meters=200]
+  tuple(
+    4845,
+    15,
+  )
+# ---
+# name: test_rank_stations_max_difference_elevation_meters[site_elevation=0, max_difference_elevation_meters=200]
+  tuple(
+    2756,
+    15,
+  )
+# ---
+# name: test_rank_stations_max_difference_elevation_meters[site_elevation=0, max_difference_elevation_meters=50]
+  tuple(
+    1665,
+    15,
+  )
+# ---
+# name: test_rank_stations_max_difference_elevation_meters[site_elevation=1000, max_difference_elevation_meters=50]
+  tuple(
+    50,
+    15,
+  )
+# ---
+# name: test_rank_stations_max_distance_meters[max_distance_meters=200000]
+  tuple(
+    50,
+    15,
+  )
+# ---
+# name: test_rank_stations_max_distance_meters[max_distance_meters=50000]
+  tuple(
+    5,
+    15,
+  )
+# ---
+# name: test_rank_stations_minimum_quality[minimum_quality=high]
+  tuple(
+    1737,
+    15,
+  )
+# ---
+# name: test_rank_stations_minimum_quality[minimum_quality=low]
+  tuple(
+    4845,
+    15,
+  )
+# ---
+# name: test_rank_stations_minimum_quality[minimum_quality=medium]
+  tuple(
+    2283,
+    15,
+  )
+# ---
+# name: test_rank_stations_minimum_tmy3_class[minimum_tmy3_class=III]
+  tuple(
+    1019,
+    15,
+  )
+# ---
+# name: test_rank_stations_minimum_tmy3_class[minimum_tmy3_class=II]
+  tuple(
+    857,
+    15,
+  )
+# ---
+# name: test_rank_stations_minimum_tmy3_class[minimum_tmy3_class=I]
+  tuple(
+    222,
+    15,
+  )
+# ---
+# name: test_rank_stations_no_filter
+  tuple(
+    4845,
+    15,
+  )
+# ---
+# name: test_select_station_with_empty_tempC
+  '747020'
+# ---
+# name: test_select_station_with_second_level_dates
+  '747020'
+# ---
