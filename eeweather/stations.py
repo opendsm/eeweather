@@ -356,7 +356,7 @@ def fetch_isd_daily_temp_data(usaf_id, year):
     )
 
 
-def fetch_gsod_raw_temp_data(usaf_id, year):
+def fetch_gsod_raw_temp_data_old(usaf_id, year):
     filenames = get_gsod_filenames(usaf_id, year)
 
     data = []
@@ -387,7 +387,7 @@ def fetch_gsod_raw_temp_data(usaf_id, year):
     return ts
 
 
-def fetch_gsod_raw_temp_data_new(usaf_id, year):
+def fetch_gsod_raw_temp_data(usaf_id, year):
     filenames = get_gsod_filenames(usaf_id, year)
 
     file_parse_results = [eeweather.access_api.FileParseResult.from_file_path(file_name) for file_name in filenames]
