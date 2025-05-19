@@ -62,6 +62,7 @@ class FileParseResult:
             - 93121 would refer to the wban_id
             - 2025 would refer to the year
 
+        File specific cases:
             - if gsod is found in the path its dataset type would be GSOD
             - if noaa is found in the path its dataset type would be ISD
         """
@@ -138,9 +139,6 @@ def make_api_request(dataset_type:str, usaf_id:str, wban_id: str, year:int) -> l
 
     csv_data = io.StringIO(resp.text)
     dict_reader = csv.DictReader(csv_data)
-
-    # for GSOD: SHOULD include header, make date the third column and make temp the fourth column
-    # for ISD: should NOT include header, make date start at idx 15 and make temp start at idx 87
     
     elements: list[tuple[datetime.datetime, float]] = []
     for record in dict_reader:
