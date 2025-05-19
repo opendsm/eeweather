@@ -17,6 +17,9 @@
    limitations under the License.
 
 """
+
+import attrs
+
 import ftplib
 from io import BytesIO
 import logging
@@ -30,6 +33,20 @@ logger = logging.getLogger(__name__)
 
 __all__ = ("noaa_ftp_connection_proxy", "metadata_db_connection_proxy")
 
+
+@attrs.define
+class _FileParseResult:
+    """
+    contains information about file that will be useful
+    for api requests
+    """
+
+    dataset_type: str
+    """ISD OR GSOD"""
+
+    usaf_id: str
+    wban_id: str
+    year: int
 
 def _get_noaa_ftp_connection(n_tries=5, timeout=60):  # pragma: no cover
     host = "ftp.ncei.noaa.gov"

@@ -41,6 +41,7 @@ from .warnings import EEWeatherWarning
 import eeweather.connections
 from eeweather.connections import metadata_db_connection_proxy
 import eeweather.mockable
+import eeweather.access_api
 
 DATA_EXPIRATION_DAYS = 1
 
@@ -274,7 +275,7 @@ def get_cz2010_station_metadata(usaf_id):
     return {col[0]: row[i] for i, col in enumerate(cur.description)}
 
 
-def fetch_isd_raw_temp_data(usaf_id, year):
+def fetch_isd_raw_temp_data_old(usaf_id, year):
     # possible locations of this data, errors if station is not recognized
     filenames = get_isd_filenames(usaf_id, year)
 
@@ -305,6 +306,29 @@ def fetch_isd_raw_temp_data(usaf_id, year):
     ts = ts.groupby(ts.index).mean()
     return ts
 
+
+def fetch_isd_raw_temp_data(usaf_id, year):
+    filenames = get_isd_filenames(usaf_id, year)
+
+    file_parse_results = [eeweather.access_api.FileParseResult.from_file_path(file_name) for file_name in filenames]
+
+    data = []
+    for file_parse_result in file_parse_results:
+        resp_data = eeweather.access_api.make_api_request(
+            dataset_type=file_parse_result.dataset_type,
+            usaf_id=file_parse_result.usaf_id,
+            wban_id=file_parse_result.wban_id,
+            year=file_parse_result.year
+        )
+        data.extend(resp_data)
+
+    if data == []:
+        raise ISDDataNotAvailableError(usaf_id, year)
+
+    dates, temps = zip(*sorted(data))
+    ts = pd.Series(temps, index=dates)
+    ts = ts.groupby(ts.index).mean()
+    return ts
 
 def fetch_isd_hourly_temp_data(usaf_id, year):
     # TODO(philngo): allow swappable resample method
@@ -364,6 +388,29 @@ def fetch_gsod_raw_temp_data(usaf_id, year):
     ts = ts.groupby(ts.index).mean()
     return ts
 
+
+def fetch_gsod_raw_temp_data_new(usaf_id, year):
+    filenames = get_gsod_filenames(usaf_id, year)
+
+    file_parse_results = [eeweather.access_api.FileParseResult.from_file_path(file_name) for file_name in filenames]
+
+    data = []
+    for file_parse_result in file_parse_results:
+        resp_data = eeweather.access_api.make_api_request(
+            dataset_type=file_parse_result.dataset_type,
+            usaf_id=file_parse_result.usaf_id,
+            wban_id=file_parse_result.wban_id,
+            year=file_parse_result.year
+        )
+        data.extend(resp_data)
+
+    if data == []:
+        raise GSODDataNotAvailableError(usaf_id, year)
+
+    dates, temps = zip(*sorted(data))
+    ts = pd.Series(temps, index=dates)
+    ts = ts.groupby(ts.index).mean()
+    return ts
 
 def fetch_gsod_daily_temp_data(usaf_id, year):
     ts = fetch_gsod_raw_temp_data(usaf_id, year)
