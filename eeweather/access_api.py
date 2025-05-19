@@ -26,6 +26,8 @@ import io
 
 import attrs
 import requests
+import retry
+
 
 class DatasetType:
     ISD = "IDS"
@@ -119,7 +121,7 @@ def _get_api_request_params(dataset_type:str, usaf_id:str, wban_id: str, year:in
     return params
 
 
-
+@retry.retry(tries=3)
 def make_api_request(dataset_type:str, usaf_id:str, wban_id: str, year:int) -> list[tuple[datetime.datetime, float]]:
     """
     makes api request to the access api when given the necessary information about
