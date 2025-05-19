@@ -18,13 +18,10 @@
 
 """
 
-import attrs
-
 import ftplib
 from io import BytesIO
 import logging
 import os
-import requests
 import sqlite3
 
 from .cache import KeyValueStore

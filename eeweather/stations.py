@@ -19,8 +19,6 @@
 """
 from datetime import datetime, timedelta, timezone
 import gzip
-import json
-import pkg_resources
 import pandas as pd
 import pytz
 
