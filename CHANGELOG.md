@@ -4,6 +4,7 @@ Changelog
 Development
 -----------
 
+* Switched to https api over FTP for temperature data fetching
 * Remove deprecated `typing` dependency
 * Switch from snapshottest to syrupy for snapshot testing.
 * Update internal database (2025-03-12).

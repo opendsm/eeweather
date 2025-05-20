@@ -2,26 +2,30 @@
 # -*- coding: utf-8 -*-
 """
 
-   Copyright 2018-2023 OpenEEmeter contributors
+Copyright 2018-2023 OpenEEmeter contributors
 
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
 
-       http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 
 """
+import datetime
+import pytz
+
 from io import BytesIO
 import pkg_resources
 import re
 import tempfile
 
+import eeweather.access_api
 from eeweather.cache import KeyValueStore
 
 
@@ -104,3 +108,46 @@ class MockKeyValueStoreProxy:
 
     def get_store(self):
         return self.store
+
+
+_original_make_api_request = eeweather.access_api.make_api_request
+
+
+def monkey_patch_make_api_request_return_empty(
+    dataset_type: str, usaf_id: str, wban_id: str, year: int
+):
+
+    if usaf_id == "722874" and year == 2006 and dataset_type == "GSOD":
+        return [(datetime.datetime(2006, 1, 4, 0, 0, 0, tzinfo=pytz.UTC), float("nan"))]
+
+    if usaf_id == "722874" and year == 2006:
+        return []
+
+    if usaf_id == "722874" and year == 2005:
+        return [(datetime.datetime(2005, 1, 1, 0, 0, 0), float("nan"))]
+
+    return _original_make_api_request(
+        dataset_type=dataset_type, usaf_id=usaf_id, wban_id=wban_id, year=year
+    )
+
+
+def monkey_patch_make_api_request_return_empty_v2(
+    dataset_type: str, usaf_id: str, wban_id: str, year: int
+):
+
+    if usaf_id == "722874" and year == 2006:
+        return [(datetime.datetime(2006, 1, 4, 0, 0, 0, tzinfo=pytz.UTC), float("nan"))]
+
+    if usaf_id == "722874" and year == 2005:
+        return [(datetime.datetime(2005, 1, 1, 0, 0, 0), float("nan"))]
+
+    if usaf_id == "994035":
+        start_date = datetime.datetime(2013, 1, 1, 0, 0, 0)
+        return [
+            (start_date + datetime.timedelta(hours=1) * i, float("nan"))
+            for i in range(8611)
+        ]
+
+    return _original_make_api_request(
+        dataset_type=dataset_type, usaf_id=usaf_id, wban_id=wban_id, year=year
+    )

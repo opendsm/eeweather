@@ -2,25 +2,23 @@
 # -*- coding: utf-8 -*-
 """
 
-   Copyright 2018-2023 OpenEEmeter contributors
+Copyright 2018-2023 OpenEEmeter contributors
 
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
 
-       http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 
 """
 from datetime import datetime, timedelta, timezone
 import gzip
-import json
-import pkg_resources
 import pandas as pd
 import pytz
 
@@ -41,6 +39,7 @@ from .warnings import EEWeatherWarning
 import eeweather.connections
 from eeweather.connections import metadata_db_connection_proxy
 import eeweather.mockable
+import eeweather.access_api
 
 DATA_EXPIRATION_DAYS = 1
 
@@ -274,7 +273,7 @@ def get_cz2010_station_metadata(usaf_id):
     return {col[0]: row[i] for i, col in enumerate(cur.description)}
 
 
-def fetch_isd_raw_temp_data(usaf_id, year):
+def fetch_isd_raw_temp_data_old(usaf_id, year):
     # possible locations of this data, errors if station is not recognized
     filenames = get_isd_filenames(usaf_id, year)
 
@@ -296,6 +295,33 @@ def fetch_isd_raw_temp_data(usaf_id, year):
                 dt = pytz.UTC.localize(datetime.strptime(date_str, "%Y%m%d%H%M"))
                 data.append([dt, tempC])
             gzipped.close()
+
+    if data == []:
+        raise ISDDataNotAvailableError(usaf_id, year)
+
+    dates, temps = zip(*sorted(data))
+    ts = pd.Series(temps, index=dates)
+    ts = ts.groupby(ts.index).mean()
+    return ts
+
+
+def fetch_isd_raw_temp_data(usaf_id, year):
+    filenames = get_isd_filenames(usaf_id, year)
+
+    file_parse_results = [
+        eeweather.access_api.FileParseResult.from_file_path(file_name)
+        for file_name in filenames
+    ]
+
+    data = []
+    for file_parse_result in file_parse_results:
+        resp_data = eeweather.access_api.make_api_request(
+            dataset_type=file_parse_result.dataset_type,
+            usaf_id=file_parse_result.usaf_id,
+            wban_id=file_parse_result.wban_id,
+            year=file_parse_result.year,
+        )
+        data.extend(resp_data)
 
     if data == []:
         raise ISDDataNotAvailableError(usaf_id, year)
@@ -334,7 +360,7 @@ def fetch_isd_daily_temp_data(usaf_id, year):
     )
 
 
-def fetch_gsod_raw_temp_data(usaf_id, year):
+def fetch_gsod_raw_temp_data_old(usaf_id, year):
     filenames = get_gsod_filenames(usaf_id, year)
 
     data = []
@@ -355,6 +381,33 @@ def fetch_gsod_raw_temp_data(usaf_id, year):
                 dt = pytz.UTC.localize(datetime.strptime(date_str, "%Y%m%d"))
                 data.append([dt, tempC])
             gzipped.close()
+
+    if data == []:
+        raise GSODDataNotAvailableError(usaf_id, year)
+
+    dates, temps = zip(*sorted(data))
+    ts = pd.Series(temps, index=dates)
+    ts = ts.groupby(ts.index).mean()
+    return ts
+
+
+def fetch_gsod_raw_temp_data(usaf_id, year):
+    filenames = get_gsod_filenames(usaf_id, year)
+
+    file_parse_results = [
+        eeweather.access_api.FileParseResult.from_file_path(file_name)
+        for file_name in filenames
+    ]
+
+    data = []
+    for file_parse_result in file_parse_results:
+        resp_data = eeweather.access_api.make_api_request(
+            dataset_type=file_parse_result.dataset_type,
+            usaf_id=file_parse_result.usaf_id,
+            wban_id=file_parse_result.wban_id,
+            year=file_parse_result.year,
+        )
+        data.extend(resp_data)
 
     if data == []:
         raise GSODDataNotAvailableError(usaf_id, year)
