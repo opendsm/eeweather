@@ -103,6 +103,8 @@ from eeweather.testing import (
     mock_request_text_tmy3,
     mock_request_text_cz2010,
 )
+
+import eeweather.testing
 from sqlalchemy.orm import Session
 
 
@@ -132,6 +134,18 @@ def monkeypatch_key_value_store(monkeypatch):
 
     return key_value_store_proxy.get_store()
 
+
+@pytest.fixture
+def monkeypatch_make_api_request(monkeypatch):
+    monkeypatch.setattr(
+        "eeweather.access_api.make_api_request", eeweather.testing.monkey_patch_make_api_request_return_empty
+    )
+
+@pytest.fixture
+def monkeypatch_make_api_request_v2(monkeypatch):
+    monkeypatch.setattr(
+        "eeweather.access_api.make_api_request", eeweather.testing.monkey_patch_make_api_request_return_empty_v2
+    )
 
 def test_get_isd_station_metadata():
     assert get_isd_station_metadata("722874") == {
@@ -429,7 +443,7 @@ def test_fetch_gsod_raw_temp_data_invalid_year(monkeypatch_noaa_ftp):
 
 
 # fetch file full of nans
-def test_isd_station_fetch_isd_raw_temp_data_all_nan(monkeypatch_noaa_ftp):
+def test_isd_station_fetch_isd_raw_temp_data_all_nan(monkeypatch_make_api_request_v2):
     station = ISDStation("994035")
     data = station.fetch_isd_raw_temp_data(2013)
     assert round(data.sum()) == 0
@@ -1359,7 +1373,7 @@ def test_isd_station_load_cz2010_hourly_temp_data_cached_proxy(
 
 
 # load data between dates
-def test_load_isd_hourly_temp_data(monkeypatch_noaa_ftp, monkeypatch_key_value_store):
+def test_load_isd_hourly_temp_data(monkeypatch_make_api_request_v2, monkeypatch_key_value_store):
     start = datetime(2006, 1, 3, tzinfo=pytz.UTC)
     end = datetime(2007, 4, 3, tzinfo=pytz.UTC)
     ts, warnings = load_isd_hourly_temp_data("722874", start, end)
@@ -1370,7 +1384,7 @@ def test_load_isd_hourly_temp_data(monkeypatch_noaa_ftp, monkeypatch_key_value_s
 
 
 def test_load_isd_hourly_temp_data_non_normalized_dates(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    monkeypatch_make_api_request_v2, monkeypatch_key_value_store
 ):
     start = datetime(2006, 1, 3, 11, 12, 13, tzinfo=pytz.UTC)
     end = datetime(2007, 4, 3, 12, 13, 14, tzinfo=pytz.UTC)
@@ -1381,7 +1395,7 @@ def test_load_isd_hourly_temp_data_non_normalized_dates(
     assert pd.notnull(ts.iloc[-1])
 
 
-def test_load_isd_daily_temp_data(monkeypatch_noaa_ftp, monkeypatch_key_value_store):
+def test_load_isd_daily_temp_data(monkeypatch_make_api_request_v2, monkeypatch_key_value_store):
     start = datetime(2006, 1, 3, tzinfo=pytz.UTC)
     end = datetime(2007, 4, 3, tzinfo=pytz.UTC)
     ts = load_isd_daily_temp_data("722874", start, end)
@@ -1392,7 +1406,7 @@ def test_load_isd_daily_temp_data(monkeypatch_noaa_ftp, monkeypatch_key_value_st
 
 
 def test_load_isd_daily_temp_data_non_normalized_dates(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    monkeypatch_make_api_request_v2, monkeypatch_key_value_store
 ):
     start = datetime(2006, 1, 3, 11, 12, 13, tzinfo=pytz.UTC)
     end = datetime(2007, 4, 3, 12, 13, 14, tzinfo=pytz.UTC)
@@ -1403,7 +1417,7 @@ def test_load_isd_daily_temp_data_non_normalized_dates(
     assert pd.notnull(ts.iloc[-1])
 
 
-def test_load_gsod_daily_temp_data(monkeypatch_noaa_ftp, monkeypatch_key_value_store):
+def test_load_gsod_daily_temp_data(monkeypatch_make_api_request_v2, monkeypatch_key_value_store):
     start = datetime(2006, 1, 3, tzinfo=pytz.UTC)
     end = datetime(2007, 4, 3, tzinfo=pytz.UTC)
     ts = load_gsod_daily_temp_data("722874", start, end)
@@ -1414,7 +1428,7 @@ def test_load_gsod_daily_temp_data(monkeypatch_noaa_ftp, monkeypatch_key_value_s
 
 
 def test_load_gsod_daily_temp_data_non_normalized_dates(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    monkeypatch_make_api_request, monkeypatch_key_value_store
 ):
     start = datetime(2006, 1, 3, 11, 12, 13, tzinfo=pytz.UTC)
     end = datetime(2007, 4, 3, 12, 13, 14, tzinfo=pytz.UTC)
@@ -1796,7 +1810,7 @@ def test_isd_station_metadata_null_elevation():
 
 
 def test_load_isd_hourly_temp_data_missing_years(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    monkeypatch_make_api_request, monkeypatch_key_value_store
 ):
     usaf_id = "722874"
     start = datetime(2005, 1, 1, tzinfo=pytz.UTC)
@@ -1813,7 +1827,7 @@ def test_load_isd_hourly_temp_data_missing_years(
 
 
 def test_isd_station_load_isd_hourly_temp_data_missing_years(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    monkeypatch_make_api_request, monkeypatch_key_value_store
 ):
     usaf_id = "722874"
     start = datetime(2005, 1, 1, tzinfo=pytz.UTC)
