@@ -2,19 +2,19 @@
 # -*- coding: utf-8 -*-
 """
 
-   Copyright 2018-2023 OpenEEmeter contributors
+Copyright 2018-2023 OpenEEmeter contributors
 
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
 
-       http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 
 """
 from collections import defaultdict
@@ -197,9 +197,11 @@ def _load_isd_station_metadata(download_path):
             "latitude": recent.LAT if recent.LAT not in ("+00.000",) else None,
             "longitude": recent.LON if recent.LON not in ("+000.000",) else None,
             "point": Point(float(recent.LON), float(recent.LAT)),
-            "elevation": recent["ELEV(M)"]
-            if not str(float(recent["ELEV(M)"])).startswith("-999")
-            else None,
+            "elevation": (
+                recent["ELEV(M)"]
+                if not str(float(recent["ELEV(M)"])).startswith("-999")
+                else None
+            ),
             "state": recent.STATE,
         }
 

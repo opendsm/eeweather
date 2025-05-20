@@ -2,19 +2,19 @@
 # -*- coding: utf-8 -*-
 """
 
-   Copyright 2018-2023 OpenEEmeter contributors
+Copyright 2018-2023 OpenEEmeter contributors
 
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
 
-       http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 
 """
 from datetime import datetime
@@ -138,14 +138,18 @@ def monkeypatch_key_value_store(monkeypatch):
 @pytest.fixture
 def monkeypatch_make_api_request(monkeypatch):
     monkeypatch.setattr(
-        "eeweather.access_api.make_api_request", eeweather.testing.monkey_patch_make_api_request_return_empty
+        "eeweather.access_api.make_api_request",
+        eeweather.testing.monkey_patch_make_api_request_return_empty,
     )
+
 
 @pytest.fixture
 def monkeypatch_make_api_request_v2(monkeypatch):
     monkeypatch.setattr(
-        "eeweather.access_api.make_api_request", eeweather.testing.monkey_patch_make_api_request_return_empty_v2
+        "eeweather.access_api.make_api_request",
+        eeweather.testing.monkey_patch_make_api_request_return_empty_v2,
     )
+
 
 def test_get_isd_station_metadata():
     assert get_isd_station_metadata("722874") == {
@@ -1373,7 +1377,9 @@ def test_isd_station_load_cz2010_hourly_temp_data_cached_proxy(
 
 
 # load data between dates
-def test_load_isd_hourly_temp_data(monkeypatch_make_api_request_v2, monkeypatch_key_value_store):
+def test_load_isd_hourly_temp_data(
+    monkeypatch_make_api_request_v2, monkeypatch_key_value_store
+):
     start = datetime(2006, 1, 3, tzinfo=pytz.UTC)
     end = datetime(2007, 4, 3, tzinfo=pytz.UTC)
     ts, warnings = load_isd_hourly_temp_data("722874", start, end)
@@ -1395,7 +1401,9 @@ def test_load_isd_hourly_temp_data_non_normalized_dates(
     assert pd.notnull(ts.iloc[-1])
 
 
-def test_load_isd_daily_temp_data(monkeypatch_make_api_request_v2, monkeypatch_key_value_store):
+def test_load_isd_daily_temp_data(
+    monkeypatch_make_api_request_v2, monkeypatch_key_value_store
+):
     start = datetime(2006, 1, 3, tzinfo=pytz.UTC)
     end = datetime(2007, 4, 3, tzinfo=pytz.UTC)
     ts = load_isd_daily_temp_data("722874", start, end)
@@ -1417,7 +1425,9 @@ def test_load_isd_daily_temp_data_non_normalized_dates(
     assert pd.notnull(ts.iloc[-1])
 
 
-def test_load_gsod_daily_temp_data(monkeypatch_make_api_request_v2, monkeypatch_key_value_store):
+def test_load_gsod_daily_temp_data(
+    monkeypatch_make_api_request_v2, monkeypatch_key_value_store
+):
     start = datetime(2006, 1, 3, tzinfo=pytz.UTC)
     end = datetime(2007, 4, 3, tzinfo=pytz.UTC)
     ts = load_gsod_daily_temp_data("722874", start, end)

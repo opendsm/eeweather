@@ -2,19 +2,19 @@
 # -*- coding: utf-8 -*-
 """
 
-   Copyright 2018-2023 OpenEEmeter contributors
+Copyright 2018-2023 OpenEEmeter contributors
 
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
 
-       http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 
 """
 from datetime import datetime, timedelta, timezone
@@ -308,7 +308,10 @@ def fetch_isd_raw_temp_data_old(usaf_id, year):
 def fetch_isd_raw_temp_data(usaf_id, year):
     filenames = get_isd_filenames(usaf_id, year)
 
-    file_parse_results = [eeweather.access_api.FileParseResult.from_file_path(file_name) for file_name in filenames]
+    file_parse_results = [
+        eeweather.access_api.FileParseResult.from_file_path(file_name)
+        for file_name in filenames
+    ]
 
     data = []
     for file_parse_result in file_parse_results:
@@ -316,7 +319,7 @@ def fetch_isd_raw_temp_data(usaf_id, year):
             dataset_type=file_parse_result.dataset_type,
             usaf_id=file_parse_result.usaf_id,
             wban_id=file_parse_result.wban_id,
-            year=file_parse_result.year
+            year=file_parse_result.year,
         )
         data.extend(resp_data)
 
@@ -327,6 +330,7 @@ def fetch_isd_raw_temp_data(usaf_id, year):
     ts = pd.Series(temps, index=dates)
     ts = ts.groupby(ts.index).mean()
     return ts
+
 
 def fetch_isd_hourly_temp_data(usaf_id, year):
     # TODO(philngo): allow swappable resample method
@@ -390,7 +394,10 @@ def fetch_gsod_raw_temp_data_old(usaf_id, year):
 def fetch_gsod_raw_temp_data(usaf_id, year):
     filenames = get_gsod_filenames(usaf_id, year)
 
-    file_parse_results = [eeweather.access_api.FileParseResult.from_file_path(file_name) for file_name in filenames]
+    file_parse_results = [
+        eeweather.access_api.FileParseResult.from_file_path(file_name)
+        for file_name in filenames
+    ]
 
     data = []
     for file_parse_result in file_parse_results:
@@ -398,7 +405,7 @@ def fetch_gsod_raw_temp_data(usaf_id, year):
             dataset_type=file_parse_result.dataset_type,
             usaf_id=file_parse_result.usaf_id,
             wban_id=file_parse_result.wban_id,
-            year=file_parse_result.year
+            year=file_parse_result.year,
         )
         data.extend(resp_data)
 
@@ -409,6 +416,7 @@ def fetch_gsod_raw_temp_data(usaf_id, year):
     ts = pd.Series(temps, index=dates)
     ts = ts.groupby(ts.index).mean()
     return ts
+
 
 def fetch_gsod_daily_temp_data(usaf_id, year):
     ts = fetch_gsod_raw_temp_data(usaf_id, year)
