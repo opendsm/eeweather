@@ -1,0 +1,49 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+  schedule:
+    # run monthly to monitor dependency updates
+    - cron: "0 0 1 * *"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python }} on ${{ matrix.os }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install tox
+        run: pip install tox
+      - name: Run tox
+        run: tox -e ${{ matrix.python }}
+
+  # Fan-in over the build matrix so branch protection can require a single
+  # context instead of every (python, os) combination. needs.build.result is
+  # 'success' only if every matrix combination passed.
+  build-all:
+    name: build (all)
+    if: always()
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify all matrix jobs passed
+        if: needs.build.result != 'success'
+        run: |
+          echo "build matrix result: ${{ needs.build.result }}"
+          exit 1
