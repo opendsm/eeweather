@@ -20,6 +20,7 @@ limitations under the License.
 from datetime import datetime
 import pandas as pd
 import pytest
+import sqlite3
 import pytz
 
 from eeweather import (
@@ -105,7 +106,6 @@ from eeweather.testing import (
 )
 
 import eeweather.testing
-from sqlalchemy.orm import Session
 
 
 @pytest.fixture
@@ -150,6 +150,13 @@ def monkeypatch_make_api_request_v2(monkeypatch):
         eeweather.testing.monkey_patch_make_api_request_return_empty_v2,
     )
 
+
+
+def _backdate_cache_key(store, key, updated):
+    with sqlite3.connect(store._path) as conn:
+        conn.execute(
+            "update items set updated = ? where key = ?", (updated.isoformat(), key)
+        )
 
 def test_get_isd_station_metadata():
     assert get_isd_station_metadata("722874") == {
@@ -679,15 +686,9 @@ def test_cached_isd_hourly_temp_data_is_expired_true(
 
     # manually expire key value item
     key = get_isd_hourly_temp_data_cache_key("722874", 2007)
-    store = monkeypatch_key_value_store
-    s = (
-        store.items.update()
-        .where(store.items.c.key == key)
-        .values(updated=pytz.UTC.localize(datetime(2007, 3, 3)))
+    _backdate_cache_key(
+        monkeypatch_key_value_store, key, pytz.UTC.localize(datetime(2007, 3, 3))
     )
-    with Session(store.eng) as session:
-        session.execute(s)
-        session.commit()
 
     assert cached_isd_hourly_temp_data_is_expired("722874", 2007) is True
 
@@ -699,15 +700,9 @@ def test_cached_isd_daily_temp_data_is_expired_true(
 
     # manually expire key value item
     key = get_isd_daily_temp_data_cache_key("722874", 2007)
-    store = monkeypatch_key_value_store
-    s = (
-        store.items.update()
-        .where(store.items.c.key == key)
-        .values(updated=pytz.UTC.localize(datetime(2007, 3, 3)))
+    _backdate_cache_key(
+        monkeypatch_key_value_store, key, pytz.UTC.localize(datetime(2007, 3, 3))
     )
-    with Session(store.eng) as session:
-        session.execute(s)
-        session.commit()
 
     assert cached_isd_daily_temp_data_is_expired("722874", 2007) is True
 
@@ -719,15 +714,9 @@ def test_cached_gsod_daily_temp_data_is_expired_true(
 
     # manually expire key value item
     key = get_gsod_daily_temp_data_cache_key("722874", 2007)
-    store = monkeypatch_key_value_store
-    s = (
-        store.items.update()
-        .where(store.items.c.key == key)
-        .values(updated=pytz.UTC.localize(datetime(2007, 3, 3)))
+    _backdate_cache_key(
+        monkeypatch_key_value_store, key, pytz.UTC.localize(datetime(2007, 3, 3))
     )
-    with Session(store.eng) as session:
-        session.execute(s)
-        session.commit()
 
     assert cached_gsod_daily_temp_data_is_expired("722874", 2007) is True
 
@@ -869,15 +858,9 @@ def test_validate_isd_hourly_temp_data_cache_expired(
 
     # manually expire key value item
     key = get_isd_hourly_temp_data_cache_key("722874", 2007)
-    store = monkeypatch_key_value_store
-    s = (
-        store.items.update()
-        .where(store.items.c.key == key)
-        .values(updated=pytz.UTC.localize(datetime(2007, 3, 3)))
+    _backdate_cache_key(
+        monkeypatch_key_value_store, key, pytz.UTC.localize(datetime(2007, 3, 3))
     )
-    with Session(store.eng) as session:
-        session.execute(s)
-        session.commit()
 
     assert validate_isd_hourly_temp_data_cache("722874", 2007) is False
 
@@ -889,15 +872,9 @@ def test_validate_isd_daily_temp_data_cache_expired(
 
     # manually expire key value item
     key = get_isd_daily_temp_data_cache_key("722874", 2007)
-    store = monkeypatch_key_value_store
-    s = (
-        store.items.update()
-        .where(store.items.c.key == key)
-        .values(updated=pytz.UTC.localize(datetime(2007, 3, 3)))
+    _backdate_cache_key(
+        monkeypatch_key_value_store, key, pytz.UTC.localize(datetime(2007, 3, 3))
     )
-    with Session(store.eng) as session:
-        session.execute(s)
-        session.commit()
 
     assert validate_isd_daily_temp_data_cache("722874", 2007) is False
 
@@ -909,16 +886,9 @@ def test_validate_gsod_daily_temp_data_cache_expired(
 
     # manually expire key value item
     key = get_gsod_daily_temp_data_cache_key("722874", 2007)
-    store = monkeypatch_key_value_store
-    s = (
-        store.items.update()
-        .where(store.items.c.key == key)
-        .values(updated=pytz.UTC.localize(datetime(2007, 3, 3)))
+    _backdate_cache_key(
+        monkeypatch_key_value_store, key, pytz.UTC.localize(datetime(2007, 3, 3))
     )
-
-    with Session(store.eng) as session:
-        session.execute(s)
-        session.commit()
 
     assert validate_gsod_daily_temp_data_cache("722874", 2007) is False
 

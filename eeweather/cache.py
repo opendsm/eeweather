@@ -17,47 +17,37 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 """
-import os
+import datetime
 import json
+import os
+import sqlite3
 
-try:
-    from sqlalchemy import (
-        create_engine,
-        MetaData,
-        Table,
-        Column,
-        String,
-        DateTime,
-    )
-    from sqlalchemy.orm import Session
-    from sqlalchemy.sql import select, func
-    from sqlalchemy.exc import IntegrityError
-except ImportError:  # pragma: no cover
-    has_sqlalchemy = False
-else:
-    has_sqlalchemy = True
 import pytz
 
 
-def get_datetime_if_exists(data):
-    if data is None:
-        return None
-    else:
-        dt = data[0]
-    if is_tz_naive(dt):
-        return pytz.UTC.localize(data[0])
-    else:
-        return dt
+
+SQLITE_URL_PREFIX = "sqlite:///"
 
 
-def is_tz_naive(dt):
-    return dt.tzinfo is None or dt.tzinfo.utcoffset(dt) is None
+def _sqlite_path_from_url(url):
+    if not url.startswith(SQLITE_URL_PREFIX):
+        raise ValueError(
+            "EEweather cache urls must have the form sqlite:///path/to/cache.db,"
+            " got: {}".format(url)
+        )
+
+    return url[len(SQLITE_URL_PREFIX) :]
 
 
 class KeyValueStore(object):
+    """JSON key-value store on a local sqlite database.
+
+    The database location is taken from the url argument, the
+    EEWEATHER_CACHE_URL environment variable, or ~/.eeweather/cache.db,
+    in that order. Urls have the form sqlite:///path/to/cache.db.
+    """
+
     def __init__(self, url=None):
-        if not has_sqlalchemy:  # pragma: no cover
-            raise ImportError("KeyValueStore requires sqlalchemy.")
         self._prepare_db(url)
 
     def __repr__(self):
@@ -70,76 +60,68 @@ class KeyValueStore(object):
             if not os.path.exists(directory):
                 os.makedirs(directory)
             url = "sqlite:///{}/cache.db".format(directory)
+
         return url
 
     def _prepare_db(self, url=None):
-        # set url
         if url is None:  # pragma: no cover (tests always provide url)
             url = self._get_url()
         self.url = url
 
-        self.eng = create_engine(url)
-        metadata = MetaData()
+        self._path = _sqlite_path_from_url(url)
+        with self._connect() as conn:
+            conn.execute(
+                "create table if not exists items ("
+                " key text unique,"
+                " data text,"
+                " updated text)"
+            )
+            conn.execute("create index if not exists ix_items_key on items (key)")
 
-        tbl_items = Table(
-            "items",
-            metadata,
-            Column("key", String, unique=True, index=True),  # arbitrary unique key
-            Column("data", String),  # arbitrary json
-            Column("updated", DateTime(timezone=True)),  # time of last transaction
-        )
-
-        # only create if not already created
-        tbl_items.create(checkfirst=True, bind=self.eng)
-
-        self.items = tbl_items
+    def _connect(self):
+        return sqlite3.connect(self._path)
 
     def key_exists(self, key):
-        s = select(self.items.c.key).where(self.items.c.key == key)
-        with Session(self.eng) as session:
-            result = session.execute(s)
-            return result.fetchone() is not None
+        with self._connect() as conn:
+            row = conn.execute("select 1 from items where key = ?", (key,)).fetchone()
+
+        return row is not None
 
     def save_json(self, key, data):
         data = json.dumps(data, separators=(",", ":"))
-        updated = func.now()
-        try:
-            s = self.items.insert().values(key=key, data=data, updated=updated)
-            with Session(self.eng) as session:
-                session.execute(s)
-                session.commit()
-        except IntegrityError:
-            s = (
-                self.items.update()
-                .where(self.items.c.key == key)
-                .values(key=key, data=data, updated=updated)
+        updated = datetime.datetime.now(pytz.UTC).isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                "insert into items (key, data, updated) values (?, ?, ?)"
+                " on conflict (key) do update set data = ?, updated = ?",
+                (key, data, updated, data, updated),
             )
-            with Session(self.eng) as session:
-                session.execute(s)
-                session.commit()
 
     def retrieve_json(self, key):
-        s = select(self.items.c.data).where(self.items.c.key == key)
-        with Session(self.eng) as session:
-            result = session.execute(s)
-            data = result.fetchone()
-            if data is None:
-                return None
-            else:
-                return json.loads(data[0])
+        with self._connect() as conn:
+            row = conn.execute(
+                "select data from items where key = ?", (key,)
+            ).fetchone()
+
+        if row is None:
+            return None
+
+        return json.loads(row[0])
 
     def key_updated(self, key):
-        s = select(self.items.c.updated).where(self.items.c.key == key)
-        with Session(self.eng) as session:
-            result = session.execute(s)
-            data = result.fetchone()
-            return get_datetime_if_exists(data)
+        with self._connect() as conn:
+            row = conn.execute(
+                "select updated from items where key = ?", (key,)
+            ).fetchone()
+
+        if row is None:
+            return None
+
+        return datetime.datetime.fromisoformat(row[0])
 
     def clear(self, key=None):
-        if key is None:
-            s = self.items.delete()
-        else:
-            s = self.items.delete().where(self.items.c.key == key)
-        with Session(self.eng) as session:
-            session.execute(s)
-            session.commit()
+        with self._connect() as conn:
+            if key is None:
+                conn.execute("delete from items")
+            else:
+                conn.execute("delete from items where key = ?", (key,))
