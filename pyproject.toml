@@ -78,3 +78,6 @@ exclude_lines = [
   "if __name__ == .__main__.:",
   "raise NotImplementedError",
 ]
+# Conservative floor for `tox -e coverage`. Raise it as test coverage is
+# added. The full suite measures 95.3%.
+fail_under = 94

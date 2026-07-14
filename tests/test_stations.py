@@ -1815,3 +1815,249 @@ def test_isd_station_load_isd_hourly_temp_data_missing_years(
     assert pd.isnull(ts.iloc[0])
     assert ts.index[-1] == end
     assert pd.notnull(ts.iloc[-1])
+
+
+# station 720193's 2019 data has a real mid-year outage
+def test_load_isd_hourly_temp_data_warns_on_internal_gap(
+    mock_api_transport, monkeypatch_key_value_store
+):
+    start = datetime(2019, 1, 1, tzinfo=pytz.UTC)
+    end = datetime(2019, 12, 31, tzinfo=pytz.UTC)
+
+    ts, warnings = load_isd_hourly_temp_data("720193", start, end)
+
+    assert len(ts) == 8737
+    assert int(ts.notna().sum()) == 8106
+    assert [w.qualified_name for w in warnings] == ["eeweather.data_gap"]
+    assert warnings[0].data["max_gap_days"] == pytest.approx(16.125, abs=1e-9)
+
+
+def test_load_gsod_daily_temp_data_warns_on_internal_gap(
+    mock_api_transport, monkeypatch_key_value_store
+):
+    start = datetime(2019, 1, 1, tzinfo=pytz.UTC)
+    end = datetime(2019, 12, 31, tzinfo=pytz.UTC)
+
+    with pytest.warns(UserWarning, match="internal gap of 25 days"):
+        ts = load_gsod_daily_temp_data("720193", start, end)
+
+    assert len(ts) == 365
+    assert int(ts.notna().sum()) == 340
+    assert ts.mean() == pytest.approx(12.24902, abs=1e-5)
+
+
+# a trailing gap shorter than a day does not warn: station 724940's last
+# 2025 observation is 17 hours before the requested end
+def test_load_isd_hourly_temp_data_short_trailing_gap_no_warning(
+    mock_api_transport, monkeypatch_key_value_store
+):
+    start = datetime(2025, 6, 1, tzinfo=pytz.UTC)
+    end = datetime(2025, 8, 28, tzinfo=pytz.UTC)
+
+    ts, warnings = load_isd_hourly_temp_data("724940", start, end)
+
+    assert len(ts) == 2113
+    assert int(ts.notna().sum()) == 2096
+    assert ts.last_valid_index() == datetime(2025, 8, 27, 7, tzinfo=pytz.UTC)
+    assert warnings == []
+
+
+# regression pins on real captured 2007 data
+def test_load_isd_hourly_temp_data_2007_regression_values(
+    mock_api_transport, monkeypatch_key_value_store
+):
+    start = datetime(2007, 1, 1, tzinfo=pytz.UTC)
+    end = datetime(2007, 12, 31, tzinfo=pytz.UTC)
+
+    ts, warnings = load_isd_hourly_temp_data("722874", start, end)
+
+    assert len(ts) == 8737
+    assert int(ts.notna().sum()) == 8732
+    assert ts.mean() == pytest.approx(17.851869, abs=1e-5)
+    assert ts.first_valid_index() == datetime(2007, 1, 1, tzinfo=pytz.UTC)
+    assert ts.dropna().iloc[0] == pytest.approx(14.89, abs=1e-5)
+    assert warnings == []
+
+
+def test_load_isd_daily_temp_data_2007_regression_values(
+    mock_api_transport, monkeypatch_key_value_store
+):
+    start = datetime(2007, 1, 1, tzinfo=pytz.UTC)
+    end = datetime(2007, 12, 31, tzinfo=pytz.UTC)
+
+    ts = load_isd_daily_temp_data("722874", start, end)
+
+    assert len(ts) == 365
+    assert int(ts.notna().sum()) == 365
+    assert ts.mean() == pytest.approx(17.835623, abs=1e-5)
+    assert ts.iloc[0] == pytest.approx(13.222929, abs=1e-5)
+
+
+# truncated data warns: station 724940 ISD data ends 2025-08-27
+def test_load_isd_hourly_temp_data_warns_on_truncated_data(
+    mock_api_transport, monkeypatch_key_value_store
+):
+    start = datetime(2025, 6, 1, tzinfo=pytz.UTC)
+    end = datetime(2025, 10, 1, tzinfo=pytz.UTC)
+
+    ts, warnings = load_isd_hourly_temp_data("724940", start, end)
+
+    assert len(ts) == 2929
+    assert int(ts.notna().sum()) == 2096
+    assert ts.last_valid_index() == datetime(2025, 8, 27, 7, tzinfo=pytz.UTC)
+    assert [w.qualified_name for w in warnings] == ["eeweather.data_truncated"]
+    assert warnings[0].data["last_valid"] == "2025-08-27T07:00:00+00:00"
+    assert warnings[0].data["requested_end"] == "2025-10-01T00:00:00+00:00"
+
+
+def test_load_gsod_daily_temp_data_warns_on_truncated_data(
+    mock_api_transport, monkeypatch_key_value_store
+):
+    start = datetime(2025, 6, 1, tzinfo=pytz.UTC)
+    end = datetime(2025, 10, 1, tzinfo=pytz.UTC)
+
+    with pytest.warns(UserWarning, match="Data ends 35 days"):
+        ts = load_gsod_daily_temp_data("724940", start, end)
+
+    assert len(ts) == 123
+    assert int(ts.notna().sum()) == 88
+    assert ts.last_valid_index() == datetime(2025, 8, 27, tzinfo=pytz.UTC)
+
+
+# all-years-missing behavior
+def test_load_isd_hourly_temp_data_missing_year_strict_raises(
+    mock_api_transport, monkeypatch_key_value_store
+):
+    start = datetime(2050, 1, 1, tzinfo=pytz.UTC)
+    end = datetime(2050, 6, 1, tzinfo=pytz.UTC)
+
+    with pytest.raises(ISDDataNotAvailableError):
+        load_isd_hourly_temp_data("722874", start, end)
+
+
+def test_load_isd_hourly_temp_data_missing_year_tolerant_returns_nan_range(
+    mock_api_transport, monkeypatch_key_value_store
+):
+    start = datetime(2050, 1, 1, tzinfo=pytz.UTC)
+    end = datetime(2050, 6, 1, tzinfo=pytz.UTC)
+
+    ts, warnings = load_isd_hourly_temp_data(
+        "722874", start, end, error_on_missing_years=False
+    )
+
+    assert ts.index[0] == start
+    assert ts.index[-1] == end
+    assert ts.isna().all()
+    assert [w.qualified_name for w in warnings] == [
+        "eeweather.isd_data_not_available",
+        "eeweather.no_data_in_requested_range",
+    ]
+
+
+def test_load_isd_daily_temp_data_missing_year_strict_raises(
+    mock_api_transport, monkeypatch_key_value_store
+):
+    start = datetime(2050, 1, 1, tzinfo=pytz.UTC)
+    end = datetime(2050, 6, 1, tzinfo=pytz.UTC)
+
+    with pytest.raises(ISDDataNotAvailableError):
+        load_isd_daily_temp_data("722874", start, end)
+
+
+def test_load_isd_daily_temp_data_missing_year_tolerant_warns_and_fills_nan(
+    mock_api_transport, monkeypatch_key_value_store
+):
+    start = datetime(2050, 1, 1, tzinfo=pytz.UTC)
+    end = datetime(2050, 6, 1, tzinfo=pytz.UTC)
+
+    with pytest.warns(UserWarning) as record:
+        ts = load_isd_daily_temp_data(
+            "722874", start, end, error_on_missing_years=False
+        )
+
+    messages = [str(w.message) for w in record]
+    assert any("ISD data not available for 722874 in 2050" in m for m in messages)
+    assert any("No data was available" in m for m in messages)
+
+    assert ts.index[0] == start
+    assert ts.index[-1] == end
+    assert ts.isna().all()
+
+
+def test_load_gsod_daily_temp_data_missing_year_strict_raises(
+    mock_api_transport, monkeypatch_key_value_store
+):
+    start = datetime(2050, 1, 1, tzinfo=pytz.UTC)
+    end = datetime(2050, 6, 1, tzinfo=pytz.UTC)
+
+    with pytest.raises(GSODDataNotAvailableError):
+        load_gsod_daily_temp_data("722874", start, end)
+
+
+def test_load_gsod_daily_temp_data_missing_year_tolerant_warns_and_fills_nan(
+    mock_api_transport, monkeypatch_key_value_store
+):
+    start = datetime(2050, 1, 1, tzinfo=pytz.UTC)
+    end = datetime(2050, 6, 1, tzinfo=pytz.UTC)
+
+    with pytest.warns(UserWarning) as record:
+        ts = load_gsod_daily_temp_data(
+            "722874", start, end, error_on_missing_years=False
+        )
+
+    messages = [str(w.message) for w in record]
+    assert any("GSOD data not available for 722874 in 2050" in m for m in messages)
+    assert any("No data was available" in m for m in messages)
+
+    assert ts.index[0] == start
+    assert ts.index[-1] == end
+    assert ts.isna().all()
+
+
+# a year that exists but contains no valid temperatures: 722874 in 2025
+# reports only daily summaries with missing temperature values
+def test_fetch_isd_raw_temp_data_all_nan_year(mock_api_transport):
+    ts = fetch_isd_raw_temp_data("722874", 2025)
+
+    assert len(ts) == 206
+    assert ts.isna().all()
+
+
+def test_load_isd_hourly_temp_data_all_nan_year_warns_no_data(
+    mock_api_transport, monkeypatch_key_value_store
+):
+    start = datetime(2025, 1, 1, tzinfo=pytz.UTC)
+    end = datetime(2025, 6, 1, tzinfo=pytz.UTC)
+
+    ts, warnings = load_isd_hourly_temp_data("722874", start, end)
+
+    assert ts.isna().all()
+    assert [w.qualified_name for w in warnings] == [
+        "eeweather.no_data_in_requested_range"
+    ]
+
+
+# start not exactly on an hour rounds forward to the next hour
+def test_load_isd_hourly_temp_data_start_mid_hour_aligns_forward(
+    mock_api_transport, monkeypatch_key_value_store
+):
+    start = datetime(2007, 1, 1, 0, 30, tzinfo=pytz.UTC)
+    end = datetime(2007, 2, 1, tzinfo=pytz.UTC)
+
+    ts, warnings = load_isd_hourly_temp_data("722874", start, end)
+
+    assert ts.index[0] == datetime(2007, 1, 1, 1, 0, tzinfo=pytz.UTC)
+    assert ts.index[-1] == end
+
+
+# a sub-hour range contains no aligned hours; returns empty without warning
+def test_load_isd_hourly_temp_data_sub_hour_range_returns_empty(
+    mock_api_transport, monkeypatch_key_value_store
+):
+    start = datetime(2007, 6, 1, 12, 30, tzinfo=pytz.UTC)
+    end = datetime(2007, 6, 1, 12, 45, tzinfo=pytz.UTC)
+
+    ts, warnings = load_isd_hourly_temp_data("722874", start, end)
+
+    assert len(ts) == 0
+    assert warnings == []
