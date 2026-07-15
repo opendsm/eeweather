@@ -44,7 +44,7 @@ eeweather = "eeweather.cli:cli"
 
 [project.urls]
 Homepage = "https://github.com/opendsm/eeweather"
-Documentation = "https://eeweather.readthedocs.io"
+Documentation = "https://opendsm.energy"
 Repository = "https://github.com/opendsm/eeweather"
 Issues = "https://github.com/opendsm/eeweather/issues"
 

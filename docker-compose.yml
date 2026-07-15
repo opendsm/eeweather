@@ -9,14 +9,6 @@ services:
     volumes:
       - .:/app
 
-  docs:
-    image: eeweather_shell
-    ports:
-      - "${HOST_PORT_DOCS:-8000}:8000"
-    entrypoint: make -C docs livehtml
-    volumes:
-      - .:/app
-
   test:
     image: eeweather_shell
     entrypoint: py.test -n0

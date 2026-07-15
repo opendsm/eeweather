@@ -4,6 +4,20 @@ Changelog
 Development
 -----------
 
+* Observed weather data is served from NOAA GHCNh; ISD and GSOD stopped
+  receiving data 2025-08-27. Overlap validation against ISD history shows
+  median hourly deviation of 0.0001 degrees C
+  (`scripts/validate_ghcnh_against_isd.py`).
+* New api: `load_data(usaf_id, start, end, frequency, variables)` returns a
+  DataFrame and warnings, replacing the `load_isd_*`/`load_gsod_*` family;
+  `ISDStation` is renamed `WeatherStation`. GHCNh variables beyond
+  temperature (dew point, relative humidity, wind speed, ...) are available
+  through `variables`.
+* Station registry maps each station to its GHCNh id; 349 stations with no
+  GHCNh counterpart are removed.
+* Caching uses new ghcnh-* keys; ISD-era cache entries are never served.
+* Deleted: FTP fetch code, ISD/GSOD parsing, filename helpers and CLI
+  commands, sphinx docs (documentation moves to opendsm.energy).
 * Switched to https api over FTP for temperature data fetching
 * Remove deprecated `typing` dependency
 * Switch from snapshottest to syrupy for snapshot testing.
