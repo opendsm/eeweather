@@ -21,7 +21,7 @@ import numpy as np
 
 from .connections import metadata_db_connection_proxy
 from .exceptions import UnrecognizedUSAFIDError
-from .stations import ISDStation
+from .stations import WeatherStation
 
 __all__ = ("plot_station_mapping", "plot_station_mappings")
 

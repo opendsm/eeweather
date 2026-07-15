@@ -64,15 +64,15 @@ class UnrecognizedZCTAError(EEWeatherError):
         )
 
 
-class ISDDataNotAvailableError(EEWeatherError):
-    """Raised when ISD data is not available for a particular station and year.
+class DataNotAvailableError(EEWeatherError):
+    """Raised when data is not available for a particular station and year.
 
     Attributes
     ----------
     usaf_id : str
-        the USAF ID for which ISD data does not exist.
+        the USAF ID for which data does not exist.
     year : int
-        the year for which ISD data does not exist.
+        the year for which data does not exist.
     message : str
         a message describing the error
     """
@@ -80,24 +80,7 @@ class ISDDataNotAvailableError(EEWeatherError):
     def __init__(self, usaf_id, year):
         self.usaf_id = usaf_id
         self.year = year
-        self.message = 'ISD data does not exist for station "{}" in year {}.'.format(
-            usaf_id, year
-        )
-
-
-class GSODDataNotAvailableError(EEWeatherError):
-    """Raised when GSOD data is not available for a particular station and year.
-
-    Attributes
-    ----------
-        usaf_id -- The USAF ID for which GSOD data does not exist.
-        year -- The year for which GSOD data does not exist.
-    """
-
-    def __init__(self, usaf_id, year):
-        self.usaf_id = usaf_id
-        self.year = year
-        self.message = 'GSOD data does not exist for station "{}" in year {}.'.format(
+        self.message = 'Data does not exist for station "{}" in year {}.'.format(
             usaf_id, year
         )
 

@@ -25,8 +25,6 @@ import click
 from . import (
     get_isd_station_metadata as _get_isd_station_metadata,
     get_isd_file_metadata as _get_isd_file_metadata,
-    get_isd_filenames as _get_isd_filenames,
-    get_gsod_filenames as _get_gsod_filenames,
 )
 from .exceptions import UnrecognizedUSAFIDError
 
@@ -96,24 +94,6 @@ def inspect_isd_station(usaf_id):
 def inspect_isd_file_years(usaf_id):
     metadata = _get_isd_file_metadata(usaf_id)
     click.echo(json.dumps(metadata, indent=2))
-
-
-@cli.command()
-@click.argument("usaf_id")
-@click.argument("year")
-def inspect_isd_filenames(usaf_id, year):
-    filenames = _get_isd_filenames(usaf_id, year, with_host=True)
-    for f in filenames:
-        click.echo(f)
-
-
-@cli.command()
-@click.argument("usaf_id")
-@click.argument("year")
-def inspect_gsod_filenames(usaf_id, year):
-    filenames = _get_gsod_filenames(usaf_id, year, with_host=True)
-    for f in filenames:
-        click.echo(f)
 
 
 @cli.command()

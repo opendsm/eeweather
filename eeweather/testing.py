@@ -24,7 +24,6 @@ from importlib.resources import files
 import re
 import tempfile
 
-import eeweather.access_api
 from eeweather.cache import KeyValueStore
 
 
@@ -64,64 +63,3 @@ class MockKeyValueStoreProxy:
 
     def get_store(self):
         return self.store
-
-
-_original_make_api_request = eeweather.access_api.make_api_request
-
-
-def monkey_patch_make_api_request_return_empty(
-    dataset_type: str, usaf_id: str, wban_id: str, year: int
-):
-    if usaf_id == "722874" and year == 2006 and dataset_type == "GSOD":
-        single_nan_day = (
-            datetime.datetime(2006, 1, 4, 0, 0, 0, tzinfo=pytz.UTC),
-            float("nan"),
-        )
-
-        return [single_nan_day]
-
-    if usaf_id == "722874" and year == 2006:
-        return []
-
-    if usaf_id == "722874" and year == 2005:
-        single_naive_nan_day = (datetime.datetime(2005, 1, 1, 0, 0, 0), float("nan"))
-
-        return [single_naive_nan_day]
-
-    result = _original_make_api_request(
-        dataset_type=dataset_type, usaf_id=usaf_id, wban_id=wban_id, year=year
-    )
-
-    return result
-
-
-def monkey_patch_make_api_request_return_empty_v2(
-    dataset_type: str, usaf_id: str, wban_id: str, year: int
-):
-    if usaf_id == "722874" and year == 2006:
-        single_nan_day = (
-            datetime.datetime(2006, 1, 4, 0, 0, 0, tzinfo=pytz.UTC),
-            float("nan"),
-        )
-
-        return [single_nan_day]
-
-    if usaf_id == "722874" and year == 2005:
-        single_naive_nan_day = (datetime.datetime(2005, 1, 1, 0, 0, 0), float("nan"))
-
-        return [single_naive_nan_day]
-
-    if usaf_id == "994035":
-        start_date = datetime.datetime(2013, 1, 1, 0, 0, 0)
-        nan_hours = [
-            (start_date + datetime.timedelta(hours=1) * i, float("nan"))
-            for i in range(8611)
-        ]
-
-        return nan_hours
-
-    result = _original_make_api_request(
-        dataset_type=dataset_type, usaf_id=usaf_id, wban_id=wban_id, year=year
-    )
-
-    return result

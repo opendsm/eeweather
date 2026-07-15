@@ -23,7 +23,7 @@ import pytest
 import pytz
 
 from eeweather import rank_stations, combine_ranked_stations, select_station
-from eeweather.exceptions import ISDDataNotAvailableError
+from eeweather.exceptions import DataNotAvailableError
 
 
 @pytest.fixture
@@ -247,8 +247,8 @@ def test_select_station_no_coverage_check(cz_candidates):
 
 
 @pytest.fixture
-def monkeypatch_load_isd_hourly_temp_data(monkeypatch):
-    def load_isd_hourly_temp_data(station, start, end, fetch_from_web=True):
+def monkeypatch_load_hourly_temp_data(monkeypatch):
+    def load_hourly_temp_data(station, start, end, fetch_from_web=True):
         # because result datetimes should fall exactly on hours
         normalized_start = datetime(
             start.year, start.month, start.day, start.hour, tzinfo=pytz.UTC
@@ -264,11 +264,11 @@ def monkeypatch_load_isd_hourly_temp_data(monkeypatch):
         return pd.Series(1, index=index)[: -24 * 10].reindex(index), []
 
     monkeypatch.setattr(
-        "eeweather.mockable.load_isd_hourly_temp_data", load_isd_hourly_temp_data
+        "eeweather.mockable.load_hourly_temp_data", load_hourly_temp_data
     )
 
 
-def test_select_station_full_data(cz_candidates, monkeypatch_load_isd_hourly_temp_data):
+def test_select_station_full_data(cz_candidates, monkeypatch_load_hourly_temp_data):
     start = datetime(2017, 1, 1, tzinfo=pytz.UTC)
     end = datetime(2018, 1, 1, tzinfo=pytz.UTC)
 
@@ -290,11 +290,11 @@ def test_select_station_full_data(cz_candidates, monkeypatch_load_isd_hourly_tem
 
 
 @pytest.fixture
-def monkeypatch_load_isd_hourly_temp_data_with_error(monkeypatch):
-    def load_isd_hourly_temp_data(station, start, end, fetch_from_web=True):
+def monkeypatch_load_hourly_temp_data_with_error(monkeypatch):
+    def load_hourly_temp_data(station, start, end, fetch_from_web=True):
         index = pd.date_range(start, end, freq="h", tz="UTC")
         if station.usaf_id == "723890":
-            raise ISDDataNotAvailableError(
+            raise DataNotAvailableError(
                 "723890", start.year
             )  # first choice not available
         elif station.usaf_id == "747020":
@@ -307,12 +307,12 @@ def monkeypatch_load_isd_hourly_temp_data_with_error(monkeypatch):
             )
 
     monkeypatch.setattr(
-        "eeweather.mockable.load_isd_hourly_temp_data", load_isd_hourly_temp_data
+        "eeweather.mockable.load_hourly_temp_data", load_hourly_temp_data
     )
 
 
 def test_select_station_with_isd_data_not_available_error(
-    cz_candidates, monkeypatch_load_isd_hourly_temp_data_with_error
+    cz_candidates, monkeypatch_load_hourly_temp_data_with_error
 ):
     start = datetime(2017, 1, 1, tzinfo=pytz.UTC)
     end = datetime(2018, 1, 1, tzinfo=pytz.UTC)
@@ -325,8 +325,8 @@ def test_select_station_with_isd_data_not_available_error(
 
 
 @pytest.fixture
-def monkeypatch_load_isd_hourly_temp_data_with_empty(monkeypatch):
-    def load_isd_hourly_temp_data(station, start, end, fetch_from_web=True):
+def monkeypatch_load_hourly_temp_data_with_empty(monkeypatch):
+    def load_hourly_temp_data(station, start, end, fetch_from_web=True):
         index = pd.date_range(start, end, freq="h", tz="UTC")
         if station.usaf_id == "723890":
             return pd.Series(1, index=index)[:0], []
@@ -340,12 +340,12 @@ def monkeypatch_load_isd_hourly_temp_data_with_empty(monkeypatch):
             )
 
     monkeypatch.setattr(
-        "eeweather.mockable.load_isd_hourly_temp_data", load_isd_hourly_temp_data
+        "eeweather.mockable.load_hourly_temp_data", load_hourly_temp_data
     )
 
 
 def test_select_station_with_empty_tempC(
-    cz_candidates, monkeypatch_load_isd_hourly_temp_data_with_empty, snapshot
+    cz_candidates, monkeypatch_load_hourly_temp_data_with_empty, snapshot
 ):
     start = datetime(2017, 1, 1, tzinfo=pytz.UTC)
     end = datetime(2018, 1, 1, tzinfo=pytz.UTC)
@@ -376,7 +376,7 @@ def test_select_station_no_station_warnings_check():
 
 
 def test_select_station_with_second_level_dates(
-    cz_candidates, monkeypatch_load_isd_hourly_temp_data, snapshot
+    cz_candidates, monkeypatch_load_hourly_temp_data, snapshot
 ):
     # dates don't fall exactly on the hour
     start = datetime(2017, 1, 1, 2, 3, 4, tzinfo=pytz.UTC)

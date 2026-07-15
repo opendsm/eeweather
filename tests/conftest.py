@@ -65,4 +65,4 @@ def mock_api_transport(monkeypatch):
 
         return MockAccessAPIResponse(text)
 
-    monkeypatch.setattr("eeweather.access_api.requests.get", mock_get)
+    monkeypatch.setattr("eeweather.sources.ghcnh.requests.get", mock_get)

@@ -22,10 +22,10 @@ import numpy as np
 import pyproj
 
 import eeweather.mockable
-from .exceptions import ISDDataNotAvailableError
+from .exceptions import DataNotAvailableError
 from .connections import metadata_db_connection_proxy
 from .geo import get_lat_long_climate_zones
-from .stations import ISDStation
+from .stations import WeatherStation
 from .utils import lazy_property
 from .warnings import EEWeatherWarning
 
@@ -351,12 +351,15 @@ def combine_ranked_stations(rankings):
 
 
 @eeweather.mockable.mockable()
-def load_isd_hourly_temp_data(
+def load_hourly_temp_data(
     station, start_date, end_date, fetch_from_web
 ):  # pragma: no cover
-    return station.load_isd_hourly_temp_data(
-        start_date, end_date, fetch_from_web=fetch_from_web
+    df, warnings = station.load_data(
+        start_date, end_date, fetch_from_web=fetch_from_web,
+        error_on_missing_years=False,
     )
+
+    return df["temperature"], warnings
 
 
 def select_station(
@@ -379,7 +382,7 @@ def select_station(
 
     Returns
     -------
-    isd_station, warnings : tuple of (:any:`eeweather.ISDStation`, list of str)
+    station, warnings : tuple of (:any:`eeweather.WeatherStation`, list of str)
         A qualified weather station. ``None`` if no station meets criteria.
     """
 
@@ -389,10 +392,10 @@ def select_station(
         else:
             start_date, end_date = coverage_range
             try:
-                tempC, warnings = eeweather.mockable.load_isd_hourly_temp_data(
+                tempC, warnings = eeweather.mockable.load_hourly_temp_data(
                     station, start_date, end_date, fetch_from_web
                 )
-            except ISDDataNotAvailableError:
+            except DataNotAvailableError:
                 return False, []  # reject
 
             # TODO(philngo): also need to incorporate within-day limits
@@ -422,7 +425,7 @@ def select_station(
 
     n_stations_passed = 0
     for usaf_id, row in candidates.iterrows():
-        station = ISDStation(usaf_id)
+        station = WeatherStation(usaf_id)
         test_result, warnings = _test_station(station)
         if test_result:
             n_stations_passed += 1
