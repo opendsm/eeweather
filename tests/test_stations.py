@@ -73,7 +73,7 @@ from eeweather.exceptions import (
     CZ2010DataNotAvailableError,
     NonUTCTimezoneInfoError,
 )
-from eeweather.testing import (
+from conftest import (
     MockKeyValueStoreProxy,
     mock_request_text_tmy3,
     mock_request_text_cz2010,

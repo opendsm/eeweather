@@ -40,7 +40,7 @@ wget -N https://www.ncei.noaa.gov/pub/data/noaa/isd-inventory.csv -P $DATA_DIR -
 
 # Scrape-friendly TMY3 station list
 echo Downloading tmy3-stations.html
-cp /app/eeweather/resources/tmy3-stations.html $DATA_DIR
+cp "$PARENT_PATH/data/tmy3-stations.html" $DATA_DIR
 
 # Add ZIP code prefix mapping
 echo Downloading state zipcode prefixes

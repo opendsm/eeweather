@@ -18,10 +18,14 @@ limitations under the License.
 
 """
 import gzip
+import re
+import tempfile
 
 from pathlib import Path
 
 import pytest
+
+from eeweather.cache import KeyValueStore
 
 
 
@@ -66,3 +70,32 @@ def mock_api_transport(monkeypatch):
         return MockAccessAPIResponse(text)
 
     monkeypatch.setattr("eeweather.sources.ghcnh.requests.get", mock_get)
+
+
+def _fixture_ascii(name):
+    return (FIXTURE_DIR / name).read_text(encoding="ascii")
+
+
+def mock_request_text_tmy3(url):
+    match_url = (
+        "https://storage.googleapis.com/openeemeter-public-resources/"
+        "tmy3_archive/722880TYA.CSV"
+    )
+    if re.match(match_url, url):
+        return _fixture_ascii("722880TYA.CSV")
+
+
+def mock_request_text_cz2010(url):
+    match_url = "https://storage.googleapis.com/oee-cz2010/csv/722880_CZ2010.CSV"
+
+    if re.match(match_url, url):
+        return _fixture_ascii("722880_CZ2010.CSV")
+
+
+class MockKeyValueStoreProxy:
+    def __init__(self):
+        # create a new test store in a temporary folder
+        self.store = KeyValueStore("sqlite:///{}/cache.db".format(tempfile.mkdtemp()))
+
+    def get_store(self):
+        return self.store
