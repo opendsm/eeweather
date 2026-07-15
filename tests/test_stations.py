@@ -27,6 +27,7 @@ import pytz
 from eeweather import (
     WeatherStation,
     get_ghcn_id,
+    get_ghcn_ids,
     get_isd_station_metadata,
     get_station_quality,
     get_station_qualities,
@@ -1278,3 +1279,17 @@ def test_weather_station_get_quality():
     end = datetime(2012, 12, 31, tzinfo=pytz.UTC)
 
     assert station.get_quality(start, end) == "high"
+
+
+def test_get_ghcn_ids_whole_registry():
+    mapping = get_ghcn_ids()
+
+    assert mapping["722874"] == "USW00093134"
+    assert mapping["722880"] == "USW00023152"
+    assert len(mapping) == 4497
+
+
+def test_get_ghcn_ids_subset_skips_unrecognized():
+    mapping = get_ghcn_ids(["722874", "FAKE"])
+
+    assert mapping.to_dict() == {"722874": "USW00093134"}

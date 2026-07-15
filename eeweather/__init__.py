@@ -75,6 +75,7 @@ from .stations import (
     load_cached_tmy3_hourly_temp_data,
     load_cached_cz2010_hourly_temp_data,
 )
+from .utils import get_ghcn_ids
 from .visualization import plot_station_mapping, plot_station_mappings
 
 

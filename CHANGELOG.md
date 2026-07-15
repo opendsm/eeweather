@@ -13,7 +13,9 @@ Development
   `ISDStation` is renamed `WeatherStation`. GHCNh variables beyond
   temperature (dew point, relative humidity, wind speed, ...) are available
   through `variables`.
-* Station registry maps each station to its GHCNh id; 349 stations with no
+* Station registry maps each station to its GHCNh id
+  (`get_ghcn_id(usaf_id)` for one station, `get_ghcn_ids()` for the
+  registry); 349 stations with no
   GHCNh counterpart are removed. Each station records the first and last
   year its GHCNh record has observations (`ghcn_first_year`,
   `ghcn_last_year`); about a fifth of the registry, nearly all low

@@ -17,6 +17,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 """
+import pandas as pd
+
+from .connections import metadata_db_connection_proxy
+
 
 
 class lazy_property(object):
@@ -44,3 +48,22 @@ class lazy_property(object):
         value = self.fget(obj)
         setattr(obj, self.func_name, value)
         return value
+
+
+def get_ghcn_ids(usaf_ids=None):
+    """GHCNh station ids mapped to ISD USAF ids, as a usaf_id-indexed Series.
+
+    Parameters
+    ----------
+    usaf_ids : list of str, optional
+        USAF ids to map. When None, the whole registry is returned.
+        Unrecognized ids are absent from the result.
+    """
+    conn = metadata_db_connection_proxy.get_connection()
+    mapping = pd.read_sql_query(
+        "select usaf_id, ghcn_id from isd_station_metadata", conn
+    ).set_index("usaf_id")["ghcn_id"]
+    if usaf_ids is not None:
+        mapping = mapping[mapping.index.isin(list(usaf_ids))]
+
+    return mapping
