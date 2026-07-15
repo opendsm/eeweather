@@ -29,7 +29,7 @@ import tempfile
 import pandas as pd
 import numpy as np
 
-from .connections import noaa_ftp_connection_proxy, metadata_db_connection_proxy
+from .connections import metadata_db_connection_proxy
 
 
 logger = logging.getLogger(__name__)

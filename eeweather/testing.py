@@ -21,7 +21,6 @@ import datetime
 import pytz
 
 from importlib.resources import files
-from io import BytesIO
 import re
 import tempfile
 
@@ -34,32 +33,12 @@ def _resource_bytes(name):
     return files("eeweather.resources").joinpath(name).read_bytes()
 
 
-def write_isd_file(bytes_string):
-    bytes_string.write(_resource_bytes("ISD.gz"))
-
-
 def write_tmy3_file():
     return _resource_bytes("722880TYA.CSV").decode("ascii")
 
 
 def write_cz2010_file():
     return _resource_bytes("722880_CZ2010.CSV").decode("ascii")
-
-
-def write_missing_isd_file(bytes_string):
-    bytes_string.write(_resource_bytes("ISD-MISSING.gz"))
-
-
-def write_nan_isd_file(bytes_string):
-    bytes_string.write(_resource_bytes("ISD-NAN.gz"))
-
-
-def write_gsod_file(bytes_string):
-    bytes_string.write(_resource_bytes("GSOD.op.gz"))
-
-
-def write_missing_gsod_file(bytes_string):
-    bytes_string.write(_resource_bytes("GSOD-MISSING.op.gz"))
 
 
 def mock_request_text_tmy3(url):
@@ -76,26 +55,6 @@ def mock_request_text_cz2010(url):
 
     if re.match(match_url, url):
         return write_cz2010_file()
-
-
-class MockNOAAFTPConnectionProxy:
-    def read_file_as_bytes(self, filename):
-        bytes_string = BytesIO()
-
-        if re.match("/pub/data/noaa/2007/722874-93134-2007.gz", filename):
-            write_isd_file(bytes_string)
-        elif re.match("/pub/data/noaa/2006/722874-93134-2006.gz", filename):
-            write_missing_isd_file(bytes_string)
-        elif re.match("/pub/data/noaa/2013/994035-99999-2013.gz", filename):
-            write_nan_isd_file(bytes_string)
-        elif re.match("/pub/data/gsod/2007/722874-93134-2007.op.gz", filename):
-            write_gsod_file(bytes_string)
-        elif re.match("/pub/data/gsod/2006/722874-93134-2006.op.gz", filename):
-            write_missing_gsod_file(bytes_string)
-
-        bytes_string.seek(0)
-
-        return bytes_string
 
 
 class MockKeyValueStoreProxy:

@@ -18,14 +18,11 @@ limitations under the License.
 
 """
 from datetime import datetime, timedelta, timezone
-import gzip
 import warnings as pywarnings
 
 import pandas as pd
 import pytz
 
-# this import allows monkeypatching noaa_ftp_connection_proxy in tests because
-# the fully qualified package path name is preserved
 import requests
 
 from .exceptions import (
@@ -342,38 +339,6 @@ def get_cz2010_station_metadata(usaf_id):
     return {col[0]: row[i] for i, col in enumerate(cur.description)}
 
 
-def fetch_isd_raw_temp_data_old(usaf_id, year):
-    # possible locations of this data, errors if station is not recognized
-    filenames = get_isd_filenames(usaf_id, year)
-
-    data = []
-    for filename in filenames:
-        # using fully-qualified name facilitates monkeypatching
-        gzipped = eeweather.connections.noaa_ftp_connection_proxy.read_file_as_bytes(
-            filename
-        )
-
-        if gzipped is not None:
-            f = gzip.GzipFile(fileobj=gzipped)
-            for line in f.readlines():
-                if line[87:92].decode("utf-8") == "+9999":
-                    tempC = float("nan")
-                else:
-                    tempC = float(line[87:92]) / 10.0
-                date_str = line[15:27].decode("utf-8")
-                dt = pytz.UTC.localize(datetime.strptime(date_str, "%Y%m%d%H%M"))
-                data.append([dt, tempC])
-            gzipped.close()
-
-    if data == []:
-        raise ISDDataNotAvailableError(usaf_id, year)
-
-    dates, temps = zip(*sorted(data))
-    ts = pd.Series(temps, index=dates)
-    ts = ts.groupby(ts.index).mean()
-    return ts
-
-
 def fetch_isd_raw_temp_data(usaf_id, year):
     filenames = get_isd_filenames(usaf_id, year)
 
@@ -427,37 +392,6 @@ def fetch_isd_daily_temp_data(usaf_id, year):
         .resample("D")
         .mean()
     )
-
-
-def fetch_gsod_raw_temp_data_old(usaf_id, year):
-    filenames = get_gsod_filenames(usaf_id, year)
-
-    data = []
-    for filename in filenames:
-        # using fully-qualified name facilitates monkeypatching
-        gzipped = eeweather.connections.noaa_ftp_connection_proxy.read_file_as_bytes(
-            filename
-        )
-
-        if gzipped is not None:
-            f = gzip.GzipFile(fileobj=gzipped)
-            lines = f.readlines()
-            for line in lines[1:]:
-                columns = line.split()
-                date_str = columns[2].decode("utf-8")
-                tempF = float(columns[3])
-                tempC = (5.0 / 9.0) * (tempF - 32.0)
-                dt = pytz.UTC.localize(datetime.strptime(date_str, "%Y%m%d"))
-                data.append([dt, tempC])
-            gzipped.close()
-
-    if data == []:
-        raise GSODDataNotAvailableError(usaf_id, year)
-
-    dates, temps = zip(*sorted(data))
-    ts = pd.Series(temps, index=dates)
-    ts = ts.groupby(ts.index).mean()
-    return ts
 
 
 def fetch_gsod_raw_temp_data(usaf_id, year):
