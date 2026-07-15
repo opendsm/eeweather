@@ -16,6 +16,7 @@ import csv
 import io
 import sqlite3
 import sys
+import time
 
 import pandas as pd
 import pytz
@@ -27,28 +28,32 @@ from eeweather.sources.ghcnh import API_URL, fetch_ghcnh_hourly
 
 YEARS = [2016, 2019, 2022, 2024]
 
-STATIONS_PER_QUALITY = {"high": 6, "medium": 3, "low": 3}
+STATIONS_PER_STATE_QUALITY = {"high": 2, "medium": 1, "low": 1}
 
 
 def _sample_stations():
-    """Deterministic stratified sample: spread across states within tiers."""
+    """Deterministic stratified sample: per state, up to 2 high-quality
+    stations plus 1 medium and 1 low, covering every state and territory."""
     conn = sqlite3.connect("eeweather/resources/metadata.db")
     cur = conn.cursor()
-    stations = []
-    for quality, n in STATIONS_PER_QUALITY.items():
-        cur.execute(
-            """
-          select usaf_id, recent_wban_id, ghcn_id, state
-          from isd_station_metadata
-          where quality = ? and state is not null
-          group by state having usaf_id = min(usaf_id)
-          order by state
-        """,
-            (quality,),
+    cur.execute(
+        """
+      select quality, usaf_id, recent_wban_id, ghcn_id, coalesce(state, 'INTL')
+      from isd_station_metadata
+      order by state, quality, usaf_id
+    """
+    )
+    by_stratum = {}
+    for quality, usaf_id, wban_id, ghcn_id, state in cur.fetchall():
+        by_stratum.setdefault((state, quality), []).append(
+            (quality, usaf_id, wban_id, ghcn_id, state)
         )
-        rows = cur.fetchall()
+
+    stations = []
+    for (state, quality), rows in sorted(by_stratum.items()):
+        n = STATIONS_PER_STATE_QUALITY[quality]
         step = max(1, len(rows) // n)
-        stations.extend([(quality,) + row for row in rows[::step][:n]])
+        stations.extend(rows[::step][:n])
 
     return stations
 
@@ -137,7 +142,10 @@ def main():
                 " max|d|={max_abs_delta:.2f} annual|d|={annual_mean_delta:.5f}".format(**r)
             )
 
+            time.sleep(0.2)
+
     df = pd.DataFrame(results)
+    df.to_csv("validation_results.csv", index=False)
     print("\n=== summary over {} station-years ===".format(len(df)))
     for col in ["mean_abs_delta", "p99_abs_delta", "annual_mean_delta"]:
         print(
