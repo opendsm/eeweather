@@ -383,3 +383,24 @@ def test_select_station_with_second_level_dates(
 
     station, warnings = select_station(cz_candidates, coverage_range=(start, end))
     assert station.usaf_id == snapshot
+
+
+def test_rank_stations_rating_period_uses_era_quality(lat_long_fresno):
+    lat, lng = lat_long_fresno
+    start = datetime(2010, 1, 1, tzinfo=pytz.UTC)
+    end = datetime(2014, 12, 31, tzinfo=pytz.UTC)
+
+    df = rank_stations(
+        lat, lng, minimum_quality="high", is_tmy3=True, is_cz2010=True,
+        rating_period=(start, end),
+    )
+
+    # 723895 and 723896 rate high in their active era despite being
+    # medium or low today
+    assert list(df.head().index) == [
+        "723890",
+        "747020",
+        "723896",
+        "724815",
+        "723895",
+    ]

@@ -28,6 +28,8 @@ from eeweather import (
     WeatherStation,
     get_ghcn_id,
     get_isd_station_metadata,
+    get_station_quality,
+    get_station_qualities,
     get_isd_file_metadata,
     fetch_hourly_data,
     fetch_tmy3_hourly_temp_data,
@@ -1235,3 +1237,44 @@ def test_weather_station_load_cached_data(
     station.destroy_cached_hourly_data(2007)
 
     assert station.load_cached_data() is None
+
+
+# request-period quality ratings: five-year window ending two years
+# after the request's last date, sliding back to the last full year
+def test_get_station_quality_high_during_active_era():
+    start = datetime(2008, 1, 1, tzinfo=pytz.UTC)
+    end = datetime(2012, 12, 31, tzinfo=pytz.UTC)
+
+    assert get_station_quality("722874", start, end) == "high"
+
+
+def test_get_station_quality_low_after_station_went_quiet():
+    start = datetime(2023, 1, 1, tzinfo=pytz.UTC)
+    end = datetime(2024, 12, 31, tzinfo=pytz.UTC)
+
+    assert get_station_quality("722874", start, end) == "low"
+
+
+def test_get_station_quality_low_before_any_data():
+    start = datetime(1850, 1, 1, tzinfo=pytz.UTC)
+    end = datetime(1851, 1, 1, tzinfo=pytz.UTC)
+
+    assert get_station_quality("722874", start, end) == "low"
+
+
+def test_get_station_qualities_matches_single_station_rating():
+    start = datetime(2010, 1, 1, tzinfo=pytz.UTC)
+    end = datetime(2014, 12, 31, tzinfo=pytz.UTC)
+
+    qualities = get_station_qualities(start, end)
+
+    for usaf_id in ["722874", "722880", "723895"]:
+        assert qualities[usaf_id] == get_station_quality(usaf_id, start, end)
+
+
+def test_weather_station_get_quality():
+    station = WeatherStation("722874")
+    start = datetime(2008, 1, 1, tzinfo=pytz.UTC)
+    end = datetime(2012, 12, 31, tzinfo=pytz.UTC)
+
+    assert station.get_quality(start, end) == "high"

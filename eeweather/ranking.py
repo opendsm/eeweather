@@ -25,7 +25,7 @@ import eeweather.mockable
 from .exceptions import DataNotAvailableError
 from .connections import metadata_db_connection_proxy
 from .geo import get_lat_long_climate_zones
-from .stations import WeatherStation
+from .stations import WeatherStation, get_station_qualities
 from .utils import lazy_property
 from .warnings import EEWeatherWarning
 
@@ -115,6 +115,7 @@ def rank_stations(
     match_ca_climate_zone=False,
     match_state=False,
     minimum_quality=None,
+    rating_period=None,
     minimum_tmy3_class=None,
     max_distance_meters=None,
     max_difference_elevation_meters=None,
@@ -153,6 +154,13 @@ def rank_stations(
         If ``True``, filter candidate weather stations to those
         matching the US state of the target site, as specified by
         ``site_state=True``.
+    rating_period : tuple of (datetime.datetime, datetime.datetime), optional
+        When given, station quality is rated from GHCNh monthly
+        observation counts over the five calendar years ending two years
+        after the period's last date (sliding back to end no later than
+        the last full year), and the ``rough_quality`` column and
+        ``minimum_quality`` filter use that rating. When None, the rating
+        covers the last five full years.
     minimum_quality : str, ``'high'``, ``'medium'``, ``'low'``
         If given, filter candidate weather stations to those meeting or
         exceeding the given quality, as summarized by the frequency and
@@ -268,6 +276,13 @@ def rank_stations(
         filters.append(candidates.is_tmy3.isin([is_tmy3]))
     if is_cz2010 is not None:
         filters.append(candidates.is_cz2010.isin([is_cz2010]))
+
+    if rating_period is not None:
+        start, end = rating_period
+        period_qualities = get_station_qualities(start, end)
+        candidates["rough_quality"] = period_qualities.reindex(
+            candidates.index, fill_value="low"
+        )
 
     if minimum_quality == "low":
         filters.append(candidates.rough_quality.isin(["high", "medium", "low"]))

@@ -23,6 +23,13 @@ Development
   observations is high, above 360 is medium). Tiers move for about a
   fifth of stations, mostly upgrades of stations the retired ISD
   inventory undercounted: 1858 high / 393 medium / 2246 low.
+* Quality can be rated for the period being requested:
+  `get_station_quality(usaf_id, start, end)` and
+  `rank_stations(..., rating_period=(start, end))` rate stations over
+  the five calendar years ending two years after the period's last
+  date (sliding back to end no later than the last full year), so
+  historical requests rank stations by their reliability in that era.
+  The packaged database carries the monthly counts (`ghcn_inventory`).
 * Caching uses new ghcnh-* keys; ISD-era cache entries are never served.
 * Deleted: FTP fetch code, ISD/GSOD parsing, filename helpers and CLI
   commands, sphinx docs (documentation moves to opendsm.energy).

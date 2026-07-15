@@ -37,6 +37,8 @@ from .stations import (
     WeatherStation,
     get_ghcn_id,
     get_isd_station_metadata,
+    get_station_quality,
+    get_station_qualities,
     get_isd_file_metadata,
     fetch_hourly_data,
     fetch_tmy3_hourly_temp_data,

@@ -19,6 +19,7 @@ limitations under the License.
 """
 from datetime import datetime, timedelta, timezone
 
+import numpy as np
 import pandas as pd
 import pytz
 
@@ -44,6 +45,8 @@ __all__ = (
     "WeatherStation",
     "get_ghcn_id",
     "get_isd_station_metadata",
+    "get_station_quality",
+    "get_station_qualities",
     "get_isd_file_metadata",
     "fetch_hourly_data",
     "get_hourly_data_cache_key",
@@ -447,6 +450,102 @@ def get_isd_station_metadata(usaf_id):
     if row is None:
         raise UnrecognizedUSAFIDError(usaf_id)
     return {col[0]: row[i] for i, col in enumerate(cur.description)}
+
+
+GHCN_INVENTORY_MONTH_COLUMNS = (
+    "jan", "feb", "mar", "apr", "may", "jun",
+    "jul", "aug", "sep", "oct", "nov", "dec",
+)
+
+
+def _quality_rating_window(start, end):
+    """Calendar years rating a request: five years ending two years after
+    the request's last date, sliding back to end no later than the last
+    full year."""
+    last_full_year = datetime.now().year - 1
+    window_end = min(end.year + 2, last_full_year)
+    window_start = window_end - 4
+
+    return window_start, window_end
+
+
+def _quality_from_minimum(minimum):
+    if minimum > 24 * 25:
+        return "high"
+    elif minimum > 24 * 15:
+        return "medium"
+
+    return "low"
+
+
+def get_station_quality(usaf_id, start, end):
+    """Station quality for a request period, from GHCNh observation counts.
+
+    Rates the five calendar years ending two years after the request's
+    last date (sliding back so the window ends no later than the last
+    full year): every month over 600 observations is high, over 360 is
+    medium; anything less, including absent months or years, is low.
+    """
+    window_start, window_end = _quality_rating_window(start, end)
+    conn = metadata_db_connection_proxy.get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """
+      select year, {}
+      from ghcn_inventory
+      where usaf_id = ? and year between ? and ?
+    """.format(
+            ", ".join(GHCN_INVENTORY_MONTH_COLUMNS)
+        ),
+        (usaf_id, window_start, window_end),
+    )
+    counts_by_year = {row[0]: row[1:] for row in cur.fetchall()}
+
+    minimum = None
+    for year in range(window_start, window_end + 1):
+        year_counts = counts_by_year.get(year, (0,) * 12)
+        year_minimum = min(year_counts)
+        if minimum is None or year_minimum < minimum:
+            minimum = year_minimum
+
+    return _quality_from_minimum(minimum)
+
+
+def get_station_qualities(start, end):
+    """Quality for a request period for every station, as a usaf_id-indexed
+    Series.
+
+    Same rating as get_station_quality, computed for the whole registry in
+    one query.
+    """
+    window_start, window_end = _quality_rating_window(start, end)
+    conn = metadata_db_connection_proxy.get_connection()
+    inventory = pd.read_sql_query(
+        """
+      select usaf_id, year, {}
+      from ghcn_inventory
+      where year between ? and ?
+    """.format(
+            ", ".join(GHCN_INVENTORY_MONTH_COLUMNS)
+        ),
+        conn,
+        params=(window_start, window_end),
+    )
+
+    months = list(GHCN_INVENTORY_MONTH_COLUMNS)
+    year_min = inventory[months].min(axis=1)
+    observed_min = year_min.groupby(inventory.usaf_id).min()
+
+    # a station must have a row for every year of the window
+    n_years = window_end - window_start + 1
+    year_counts = inventory.groupby("usaf_id").year.nunique()
+    observed_min = observed_min.where(year_counts >= n_years, 0)
+
+    qualities = pd.Series("low", index=observed_min.index)
+    qualities[observed_min > 24 * 15] = "medium"
+    qualities[observed_min > 24 * 25] = "high"
+
+    return qualities
 
 
 def get_isd_file_metadata(usaf_id):
@@ -997,6 +1096,10 @@ class WeatherStation(object):
             fetch_from_web=fetch_from_web,
             error_on_missing_years=error_on_missing_years,
         )
+
+    def get_quality(self, start, end):
+        """Station quality over a period, from GHCNh observation counts."""
+        return get_station_quality(self.usaf_id, start, end)
 
     def load_cached_data(self):
         """Load all cached hourly data for this station."""

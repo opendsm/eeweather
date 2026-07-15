@@ -256,6 +256,42 @@ def _ghcn_data_years(inventory):
     return {gid: (int(row["min"]), int(row["max"])) for gid, row in years.iterrows()}
 
 
+def _load_registry_ghcn_inventory(isd_station_metadata, inventory):
+    """Monthly observation counts per registry station and year."""
+    ghcn_to_usaf = {}
+    for usaf_id, metadata in isd_station_metadata.items():
+        ghcn_to_usaf.setdefault(metadata["ghcn_id"], []).append(usaf_id)
+
+    rows = []
+    for record in inventory.itertuples(index=False):
+        for usaf_id in ghcn_to_usaf.get(record.GHCNh_ID, ()):
+            rows.append(
+                (usaf_id, int(record.YEAR))
+                + tuple(int(getattr(record, month)) for month in GHCNH_INVENTORY_MONTHS)
+            )
+
+    return rows
+
+
+def _write_ghcn_inventory_table(conn, ghcn_inventory):
+    cur = conn.cursor()
+    cur.executemany(
+        """
+      insert into ghcn_inventory(
+        usaf_id, year, jan, feb, mar, apr, may, jun, jul, aug, sep, oct, nov, dec
+      ) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    """,
+        ghcn_inventory,
+    )
+    cur.execute(
+        """
+      create index ghcn_inventory_usaf_id_year on ghcn_inventory(usaf_id, year)
+    """
+    )
+    cur.close()
+    conn.commit()
+
+
 def _compute_station_quality_from_ghcnh(
     isd_station_metadata, inventory, end_year=None, years_back=None
 ):
@@ -868,6 +904,27 @@ def _create_table_structures(conn):
     """
     )
 
+    cur.execute(
+        """
+      create table ghcn_inventory (
+        usaf_id text not null
+        , year integer not null
+        , jan integer not null
+        , feb integer not null
+        , mar integer not null
+        , apr integer not null
+        , may integer not null
+        , jun integer not null
+        , jul integer not null
+        , aug integer not null
+        , sep integer not null
+        , oct integer not null
+        , nov integer not null
+        , dec integer not null
+      )
+    """
+    )
+
 
 def _write_isd_station_metadata_table(conn, isd_station_metadata):
     cur = conn.cursor()
@@ -1326,6 +1383,11 @@ def build_metadata_db(
     cz2010_station_metadata = _load_cz2010_station_metadata()
 
     # Augment data in memory
+    print("Loading GHCNh inventory for registry stations")
+    ghcn_inventory = _load_registry_ghcn_inventory(
+        isd_station_metadata, _load_ghcnh_inventory(download_path)
+    )
+
     print("Computing station quality from the GHCNh inventory")
     # rough station quality: all months in the last 5 full years have
     # more than 600 observations
@@ -1385,6 +1447,9 @@ def build_metadata_db(
 
     print("Writing ISD file metadata")
     _write_isd_file_metadata_table(conn, isd_file_metadata)
+
+    print("Writing GHCNh inventory")
+    _write_ghcn_inventory_table(conn, ghcn_inventory)
 
     print("Writing TMY3 station metadata")
     _write_tmy3_station_metadata_table(conn, tmy3_station_metadata)
