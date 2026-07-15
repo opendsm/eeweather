@@ -21,3 +21,6 @@ coverage.xml
 !.github/
 !.gitignore
 !.gitattributes
+
+# validation run artifact
+validation_results.csv

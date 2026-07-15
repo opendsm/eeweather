@@ -195,7 +195,7 @@ def rank_stations(
         - ``iecc_moisture_regime``: IECC Moisture Regime ID (A-C)
         - ``ba_climate_zone``: Building America climate zone name
         - ``ca_climate_zone``: Califoria climate zone number
-        - ``rough_quality``: Approximate measure of frequency of ISD
+        - ``rough_quality``: Approximate measure of frequency of GHCNh
           observations data at weather station.
         - ``elevation``: Elevation of weather station site, if available.
         - ``state``: US state of weather station site, if applicable.
