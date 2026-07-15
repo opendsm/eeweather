@@ -19,8 +19,7 @@ limitations under the License.
 """
 import tempfile
 from eeweather.cache import KeyValueStore
-from datetime import datetime
-from datetime import UTC
+from datetime import datetime, timezone
 
 import pytest
 
@@ -47,7 +46,7 @@ def test_key_value_store(s):
     assert data["b"][2] == 3.0
     dt1 = s.key_updated("a")
     assert dt1.tzinfo is not None
-    assert dt1.date() == datetime.now(UTC).date()
+    assert dt1.date() == datetime.now(timezone.utc).date()
 
     # update key 'a'
     s.save_json("a", ["updated"])

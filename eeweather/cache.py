@@ -17,6 +17,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 """
+import contextlib
 import datetime
 import json
 import os
@@ -69,7 +70,7 @@ class KeyValueStore(object):
         self.url = url
 
         self._path = _sqlite_path_from_url(url)
-        with self._connect() as conn:
+        with self._connect() as conn, conn:
             conn.execute(
                 "create table if not exists items ("
                 " key text unique,"
@@ -79,7 +80,9 @@ class KeyValueStore(object):
             conn.execute("create index if not exists ix_items_key on items (key)")
 
     def _connect(self):
-        return sqlite3.connect(self._path)
+        # closes the connection on exit; writes commit via the inner
+        # transaction context in each caller
+        return contextlib.closing(sqlite3.connect(self._path))
 
     def key_exists(self, key):
         with self._connect() as conn:
@@ -90,7 +93,7 @@ class KeyValueStore(object):
     def save_json(self, key, data):
         data = json.dumps(data, separators=(",", ":"))
         updated = datetime.datetime.now(pytz.UTC).isoformat()
-        with self._connect() as conn:
+        with self._connect() as conn, conn:
             conn.execute(
                 "insert into items (key, data, updated) values (?, ?, ?)"
                 " on conflict (key) do update set data = ?, updated = ?",
@@ -120,7 +123,7 @@ class KeyValueStore(object):
         return datetime.datetime.fromisoformat(row[0])
 
     def clear(self, key=None):
-        with self._connect() as conn:
+        with self._connect() as conn, conn:
             if key is None:
                 conn.execute("delete from items")
             else:

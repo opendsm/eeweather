@@ -23,6 +23,7 @@ from io import BytesIO
 import logging
 import os
 import sqlite3
+import threading
 
 from .cache import KeyValueStore
 
@@ -91,16 +92,33 @@ class NOAAFTPConnectionProxy(object):
 
 
 class MetadataDBConnectionProxy(object):
+    """Serves a cached read connection to the packaged metadata database.
+
+    Connections are cached per thread and reused, so callers do not close
+    them.
+    """
+
     def __init__(self):
         root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         path = os.path.join(root_dir, "eeweather", "resources")
         self.db_path = os.path.join(path, "metadata.db")
+        self._local = threading.local()
 
     def get_connection(self):
-        return sqlite3.connect(self.db_path)
+        connection = getattr(self._local, "connection", None)
+        if connection is None:
+            connection = sqlite3.connect(self.db_path)
+            self._local.connection = connection
+
+        return connection
 
     def reset_database(self):  # pragma: no cover
+        connection = getattr(self._local, "connection", None)
+        if connection is not None:
+            connection.close()
+            self._local.connection = None
         os.remove(self.db_path)
+
         return self.get_connection()
 
 

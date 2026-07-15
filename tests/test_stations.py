@@ -19,6 +19,7 @@ limitations under the License.
 """
 from datetime import datetime
 import pandas as pd
+import contextlib
 import pytest
 import sqlite3
 import pytz
@@ -146,7 +147,7 @@ def monkeypatch_make_api_request_v2(monkeypatch, mock_api_transport):
 
 
 def _backdate_cache_key(store, key, updated):
-    with sqlite3.connect(store._path) as conn:
+    with contextlib.closing(sqlite3.connect(store._path)) as conn, conn:
         conn.execute(
             "update items set updated = ? where key = ?", (updated.isoformat(), key)
         )
