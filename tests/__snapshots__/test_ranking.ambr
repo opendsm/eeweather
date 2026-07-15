@@ -127,7 +127,7 @@
 # ---
 # name: test_rank_stations_minimum_quality[minimum_quality=high]
   tuple(
-    1735,
+    1858,
     15,
   )
 # ---
@@ -139,7 +139,7 @@
 # ---
 # name: test_rank_stations_minimum_quality[minimum_quality=medium]
   tuple(
-    2274,
+    2251,
     15,
   )
 # ---

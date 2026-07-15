@@ -235,17 +235,59 @@ def _haversine_km(lat1, lon1, lat2, lon2):
     return 2 * earth_radius_km * np.arcsin(np.sqrt(a))
 
 
-def _load_ghcn_data_years(download_path):
-    """First and last year with observations per GHCNh station."""
+GHCNH_INVENTORY_MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+                          "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
+
+
+def _load_ghcnh_inventory(download_path):
+    """Monthly observation counts per GHCNh station and year."""
     inventory = pd.read_csv(
         os.path.join(download_path, "ghcnh-inventory.txt"), sep=r"\s+"
     )
-    months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN",
-              "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
-    with_data = inventory[inventory[months].sum(axis=1) > 0]
+
+    return inventory
+
+
+def _ghcn_data_years(inventory):
+    """First and last year with observations per GHCNh station."""
+    with_data = inventory[inventory[GHCNH_INVENTORY_MONTHS].sum(axis=1) > 0]
     years = with_data.groupby("GHCNh_ID").YEAR.agg(["min", "max"])
 
     return {gid: (int(row["min"]), int(row["max"])) for gid, row in years.iterrows()}
+
+
+def _compute_station_quality_from_ghcnh(
+    isd_station_metadata, inventory, end_year=None, years_back=None
+):
+    """Rate each station by its GHCNh observation counts.
+
+    A station is high quality when every month of the last years_back
+    full years has more than 600 observations, medium above 360, low
+    otherwise or when any year is absent.
+    """
+    if end_year is None:
+        end_year = datetime.now().year - 1  # last full year
+    if years_back is None:
+        years_back = 5
+
+    year_range = set(range(end_year - (years_back - 1), end_year + 1))
+    window = inventory[inventory.YEAR.isin(year_range)]
+    grouped = {gid: group for gid, group in window.groupby("GHCNh_ID")}
+
+    def quality(ghcn_id):
+        group = grouped.get(ghcn_id)
+        if group is None or set(group.YEAR) != year_range:
+            return "low"
+        minimum = group.groupby("YEAR")[GHCNH_INVENTORY_MONTHS].sum().to_numpy().min()
+        if minimum > 24 * 25:
+            return "high"
+        elif minimum > 24 * 15:
+            return "medium"
+
+        return "low"
+
+    for usaf_id, metadata in isd_station_metadata.items():
+        metadata["quality"] = quality(metadata["ghcn_id"])
 
 
 def _map_isd_stations_to_ghcn(isd_station_metadata, download_path):
@@ -264,7 +306,7 @@ def _map_isd_stations_to_ghcn(isd_station_metadata, download_path):
     ghcn["lon"] = pd.to_numeric(ghcn.LONGITUDE, errors="coerce")
     ghcn = ghcn.dropna(subset=["lat", "lon"]).reset_index(drop=True)
     ghcn_by_id = ghcn.set_index("GHCN_ID", drop=False)
-    data_years = _load_ghcn_data_years(download_path)
+    data_years = _ghcn_data_years(_load_ghcnh_inventory(download_path))
     ghcn_by_icao = {icao: group for icao, group in ghcn.dropna(subset=["ICAO"]).groupby("ICAO")}
 
     unmapped = []
@@ -348,49 +390,6 @@ def _load_isd_file_metadata(download_path, isd_station_metadata):
             for i, row in group.iterrows()
         ]
     return metadata
-
-
-def _compute_isd_station_quality(
-    isd_station_metadata,
-    isd_file_metadata,
-    end_year=None,
-    years_back=None,
-    quality_func=None,
-):
-    if end_year is None:
-        end_year = datetime.now().year - 1  # last full year
-
-    if years_back is None:
-        years_back = 5
-
-    if quality_func is None:
-
-        def quality_func(values):
-            minimum = values.min()
-            if minimum > 24 * 25:
-                return "high"
-            elif minimum > 24 * 15:
-                return "medium"
-            else:
-                return "low"
-
-    # e.g., if end_year == 2017, year_range = ["2013", "2014", ..., "2017"]
-    year_range = set([str(y) for y in range(end_year - (years_back - 1), end_year + 1)])
-
-    def _compute_station_quality(usaf_id):
-        years_data = isd_file_metadata.get(usaf_id, {}).get("years", {})
-        if not all([year in years_data for year in year_range]):
-            return quality_func(np.repeat(0, 60))
-        counts = defaultdict(lambda: 0)
-        for y, year in enumerate(year_range):
-            for station in years_data[year]:
-                for m, month_counts in enumerate(station["counts"]):
-                    counts[y * 12 + m] += int(month_counts)
-        return quality_func(np.array(list(counts.values())))
-
-    # figure out counts for years of interest
-    for usaf_id, metadata in isd_station_metadata.items():
-        metadata["quality"] = _compute_station_quality(usaf_id)
 
 
 def _load_zcta_metadata(download_path):
@@ -1327,10 +1326,12 @@ def build_metadata_db(
     cz2010_station_metadata = _load_cz2010_station_metadata()
 
     # Augment data in memory
-    print("Computing ISD station quality")
-    # add rough station quality to station metadata
-    # (all months in last 5 years have at least 600 points)
-    _compute_isd_station_quality(isd_station_metadata, isd_file_metadata)
+    print("Computing station quality from the GHCNh inventory")
+    # rough station quality: all months in the last 5 full years have
+    # more than 600 observations
+    _compute_station_quality_from_ghcnh(
+        isd_station_metadata, _load_ghcnh_inventory(download_path)
+    )
 
     print("Mapping ZCTAs to climate zones")
     # add county and ca climate zone mappings

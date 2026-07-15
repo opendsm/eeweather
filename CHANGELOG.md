@@ -18,6 +18,11 @@ Development
   year its GHCNh record has observations (`ghcn_first_year`,
   `ghcn_last_year`); about a fifth of the registry, nearly all low
   quality, has no observations after 2023.
+* Station quality ratings are computed from the GHCNh inventory (same
+  rule as before: every month of the last five full years above 600
+  observations is high, above 360 is medium). Tiers move for about a
+  fifth of stations, mostly upgrades of stations the retired ISD
+  inventory undercounted: 1858 high / 393 medium / 2246 low.
 * Caching uses new ghcnh-* keys; ISD-era cache entries are never served.
 * Deleted: FTP fetch code, ISD/GSOD parsing, filename helpers and CLI
   commands, sphinx docs (documentation moves to opendsm.energy).
