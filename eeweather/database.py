@@ -235,13 +235,27 @@ def _haversine_km(lat1, lon1, lat2, lon2):
     return 2 * earth_radius_km * np.arcsin(np.sqrt(a))
 
 
+def _load_ghcn_data_years(download_path):
+    """First and last year with observations per GHCNh station."""
+    inventory = pd.read_csv(
+        os.path.join(download_path, "ghcnh-inventory.txt"), sep=r"\s+"
+    )
+    months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+              "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
+    with_data = inventory[inventory[months].sum(axis=1) > 0]
+    years = with_data.groupby("GHCNh_ID").YEAR.agg(["min", "max"])
+
+    return {gid: (int(row["min"]), int(row["max"])) for gid, row in years.iterrows()}
+
+
 def _map_isd_stations_to_ghcn(isd_station_metadata, download_path):
     """Assign each station its GHCNh id; stations without one are removed.
 
     Match priority: shared ICAO code (nearest candidate, within
     GHCN_MATCH_SANITY_KM), GHCNh id following the USW000{wban} pattern
     (within GHCN_MATCH_SANITY_KM), then nearest GHCNh station within
-    GHCN_NEAREST_NEIGHBOR_KM.
+    GHCN_NEAREST_NEIGHBOR_KM. Each mapped station records the first and
+    last year its GHCNh record has observations.
     """
     ghcn = pd.read_csv(
         os.path.join(download_path, "ghcnh-station-list.csv"), dtype=str
@@ -250,6 +264,7 @@ def _map_isd_stations_to_ghcn(isd_station_metadata, download_path):
     ghcn["lon"] = pd.to_numeric(ghcn.LONGITUDE, errors="coerce")
     ghcn = ghcn.dropna(subset=["lat", "lon"]).reset_index(drop=True)
     ghcn_by_id = ghcn.set_index("GHCN_ID", drop=False)
+    data_years = _load_ghcn_data_years(download_path)
     ghcn_by_icao = {icao: group for icao, group in ghcn.dropna(subset=["ICAO"]).groupby("ICAO")}
 
     unmapped = []
@@ -284,6 +299,9 @@ def _map_isd_stations_to_ghcn(isd_station_metadata, download_path):
         else:
             metadata["ghcn_id"] = ghcn_id
             metadata["ghcn_map_method"] = method
+            first_year, last_year = data_years.get(ghcn_id, (None, None))
+            metadata["ghcn_first_year"] = first_year
+            metadata["ghcn_last_year"] = last_year
 
     for usaf_id in unmapped:
         del isd_station_metadata[usaf_id]
@@ -758,6 +776,8 @@ def _create_table_structures(conn):
         , state text
         , ghcn_id text not null
         , ghcn_map_method text not null
+        , ghcn_first_year integer
+        , ghcn_last_year integer
         , quality text default 'low'
         , iecc_climate_zone text
         , iecc_moisture_regime text
@@ -866,6 +886,8 @@ def _write_isd_station_metadata_table(conn, isd_station_metadata):
             metadata["state"],
             metadata["ghcn_id"],
             metadata["ghcn_map_method"],
+            metadata["ghcn_first_year"],
+            metadata["ghcn_last_year"],
             metadata["quality"],
             metadata["iecc_climate_zone"],
             metadata["iecc_moisture_regime"],
@@ -888,12 +910,14 @@ def _write_isd_station_metadata_table(conn, isd_station_metadata):
         , state
         , ghcn_id
         , ghcn_map_method
+        , ghcn_first_year
+        , ghcn_last_year
         , quality
         , iecc_climate_zone
         , iecc_moisture_regime
         , ba_climate_zone
         , ca_climate_zone
-      ) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      ) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """,
         rows,
     )

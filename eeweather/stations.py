@@ -880,6 +880,8 @@ class WeatherStation(object):
             self.wban_ids = None
             self.recent_wban_id = None
             self.ghcn_id = None
+            self.ghcn_first_year = None
+            self.ghcn_last_year = None
             self.climate_zones = {}
 
     def __str__(self):
@@ -909,6 +911,8 @@ class WeatherStation(object):
         self.wban_ids = metadata.get("wban_ids", "").split(",")
         self.recent_wban_id = metadata.get("recent_wban_id")
         self.ghcn_id = metadata.get("ghcn_id")
+        self.ghcn_first_year = metadata.get("ghcn_first_year")
+        self.ghcn_last_year = metadata.get("ghcn_last_year")
         self.climate_zones = {
             "iecc_climate_zone": metadata.get("iecc_climate_zone"),
             "iecc_moisture_regime": metadata.get("iecc_moisture_regime"),
@@ -928,6 +932,8 @@ class WeatherStation(object):
             "wban_ids": self.wban_ids,
             "recent_wban_id": self.recent_wban_id,
             "ghcn_id": self.ghcn_id,
+            "ghcn_first_year": self.ghcn_first_year,
+            "ghcn_last_year": self.ghcn_last_year,
             "climate_zones": {
                 "iecc_climate_zone": self.iecc_climate_zone,
                 "iecc_moisture_regime": self.iecc_moisture_regime,

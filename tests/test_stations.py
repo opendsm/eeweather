@@ -120,6 +120,8 @@ def test_get_isd_station_metadata():
         "name": "DOWNTOWN L.A./USC CAMPUS",
         "ghcn_id": "USW00093134",
         "ghcn_map_method": "icao",
+        "ghcn_first_year": 1893,
+        "ghcn_last_year": 2024,
         "quality": "low",
         "recent_wban_id": "93134",
         "state": "CA",
@@ -170,6 +172,9 @@ def test_isd_station_with_load_metadata():
     assert station.quality == "high"
     assert station.wban_ids == ["23152", "99999"]
     assert station.recent_wban_id == "23152"
+    assert station.ghcn_id == "USW00023152"
+    assert station.ghcn_first_year == 1943
+    assert station.ghcn_last_year == 2026
     assert station.climate_zones == {
         "ba_climate_zone": "Hot-Dry",
         "ca_climate_zone": "CA_09",
@@ -189,6 +194,8 @@ def test_isd_station_json():
         "quality": "high",
         "recent_wban_id": "23152",
         "ghcn_id": "USW00023152",
+        "ghcn_first_year": 1943,
+        "ghcn_last_year": 2026,
         "wban_ids": ["23152", "99999"],
         "climate_zones": {
             "ba_climate_zone": "Hot-Dry",

@@ -14,7 +14,10 @@ Development
   temperature (dew point, relative humidity, wind speed, ...) are available
   through `variables`.
 * Station registry maps each station to its GHCNh id; 349 stations with no
-  GHCNh counterpart are removed.
+  GHCNh counterpart are removed. Each station records the first and last
+  year its GHCNh record has observations (`ghcn_first_year`,
+  `ghcn_last_year`); about a fifth of the registry, nearly all low
+  quality, has no observations after 2023.
 * Caching uses new ghcnh-* keys; ISD-era cache entries are never served.
 * Deleted: FTP fetch code, ISD/GSOD parsing, filename helpers and CLI
   commands, sphinx docs (documentation moves to opendsm.energy).

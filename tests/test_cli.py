@@ -54,6 +54,8 @@ def test_inspect_isd_station():
         "name": "BURBANK-GLENDALE-PASA ARPT",
         "ghcn_id": "USW00023152",
         "ghcn_map_method": "icao",
+        "ghcn_first_year": 1943,
+        "ghcn_last_year": 2026,
         "quality": "high",
         "recent_wban_id": "23152",
         "state": "CA",

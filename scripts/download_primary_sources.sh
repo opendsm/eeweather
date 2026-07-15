@@ -51,3 +51,7 @@ echo Finished downloading primary source files
 # GHCNh station list for the usaf -> ghcn id mapping
 echo Downloading ghcnh-station-list.csv
 wget -N https://www.ncei.noaa.gov/oa/global-historical-climatology-network/hourly/doc/ghcnh-station-list.csv -P $DATA_DIR -q --show-progress
+
+# GHCNh inventory for per-station data availability years
+echo Downloading ghcnh-inventory.txt
+wget -N https://www.ncei.noaa.gov/oa/global-historical-climatology-network/hourly/doc/ghcnh-inventory.txt -P $DATA_DIR -q --show-progress
