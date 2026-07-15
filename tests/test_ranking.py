@@ -58,8 +58,9 @@ def test_rank_stations_no_filter(lat_long_fresno, snapshot):
         "difference_elevation_meters",
     ]
     assert round(df.distance_meters.iloc[0]) == 2723
-    assert round(df.distance_meters.iloc[-10]) == 16565963.0
-    assert pd.isnull(df.distance_meters.iloc[-1]) is True
+    assert round(df.distance_meters.iloc[-10]) == 15057891
+    # every station in the registry has coordinates, so every distance is real
+    assert pd.notnull(df.distance_meters.iloc[-1])
 
 
 def test_rank_stations_match_climate_zones_not_null(lat_long_fresno, snapshot):

@@ -7,13 +7,15 @@
   })
 # ---
 # name: test_isd_file_metadata_table_count
-  48113
+  47626
 # ---
 # name: test_isd_station_metadata_table_content
   dict({
     'ba_climate_zone': 'Very Cold',
     'ca_climate_zone': None,
     'elevation': '+0032.5',
+    'ghcn_id': 'USW00026492',
+    'ghcn_map_method': 'icao',
     'icao_code': 'PATO',
     'iecc_climate_zone': '7',
     'iecc_moisture_regime': None,
@@ -28,5 +30,5 @@
   })
 # ---
 # name: test_isd_station_metadata_table_count
-  4845
+  4496
 # ---

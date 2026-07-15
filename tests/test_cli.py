@@ -54,6 +54,8 @@ def test_inspect_isd_station():
         "latitude": "+34.200",
         "longitude": "-118.365",
         "name": "BURBANK-GLENDALE-PASA ARPT",
+        "ghcn_id": "USW00023152",
+        "ghcn_map_method": "icao",
         "quality": "high",
         "recent_wban_id": "23152",
         "state": "CA",

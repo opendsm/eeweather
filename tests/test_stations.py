@@ -163,6 +163,8 @@ def test_get_isd_station_metadata():
         "latitude": "+34.024",
         "longitude": "-118.291",
         "name": "DOWNTOWN L.A./USC CAMPUS",
+        "ghcn_id": "USW00093134",
+        "ghcn_map_method": "icao",
         "quality": "low",
         "recent_wban_id": "93134",
         "state": "CA",
@@ -1776,7 +1778,7 @@ def test_isd_station_load_cz2010_hourly_temp_data_tz_exception(
 
 
 def test_isd_station_metadata_null_elevation():
-    usaf_id = "724953"
+    usaf_id = "722246"
     metadata = get_isd_station_metadata(usaf_id)
     assert metadata["elevation"] is None
     isd_station = ISDStation(usaf_id)

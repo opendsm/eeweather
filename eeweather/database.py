@@ -208,6 +208,75 @@ def _load_isd_station_metadata(download_path):
     return metadata
 
 
+GHCN_MATCH_SANITY_KM = 50.0
+GHCN_NEAREST_NEIGHBOR_KM = 5.0
+
+
+def _haversine_km(lat1, lon1, lat2, lon2):
+    earth_radius_km = 6371.0
+    p1, p2 = np.radians(lat1), np.radians(lat2)
+    dp, dl = np.radians(lat2 - lat1), np.radians(lon2 - lon1)
+    a = np.sin(dp / 2) ** 2 + np.cos(p1) * np.cos(p2) * np.sin(dl / 2) ** 2
+
+    return 2 * earth_radius_km * np.arcsin(np.sqrt(a))
+
+
+def _map_isd_stations_to_ghcn(isd_station_metadata, download_path):
+    """Assign each station its GHCNh id; stations without one are removed.
+
+    Match priority: shared ICAO code (nearest candidate, within
+    GHCN_MATCH_SANITY_KM), GHCNh id following the USW000{wban} pattern
+    (within GHCN_MATCH_SANITY_KM), then nearest GHCNh station within
+    GHCN_NEAREST_NEIGHBOR_KM.
+    """
+    ghcn = pd.read_csv(
+        os.path.join(download_path, "ghcnh-station-list.csv"), dtype=str
+    )
+    ghcn["lat"] = pd.to_numeric(ghcn.LATITUDE, errors="coerce")
+    ghcn["lon"] = pd.to_numeric(ghcn.LONGITUDE, errors="coerce")
+    ghcn = ghcn.dropna(subset=["lat", "lon"]).reset_index(drop=True)
+    ghcn_by_id = ghcn.set_index("GHCN_ID", drop=False)
+    ghcn_by_icao = {icao: group for icao, group in ghcn.dropna(subset=["ICAO"]).groupby("ICAO")}
+
+    unmapped = []
+    for usaf_id, metadata in isd_station_metadata.items():
+        lat = pd.to_numeric(metadata["latitude"], errors="coerce")
+        lon = pd.to_numeric(metadata["longitude"], errors="coerce")
+        ghcn_id, method = None, None
+
+        if not pd.isna(lat):
+            icao_candidates = ghcn_by_icao.get(metadata["icao_code"])
+            if icao_candidates is not None:
+                d = _haversine_km(lat, lon, icao_candidates.lat.values, icao_candidates.lon.values)
+                i = int(np.argmin(d))
+                if d[i] <= GHCN_MATCH_SANITY_KM:
+                    ghcn_id, method = icao_candidates.GHCN_ID.values[i], "icao"
+
+            if ghcn_id is None:
+                wban_guess = "USW000" + str(metadata["recent_wban_id"]).zfill(5)
+                if wban_guess in ghcn_by_id.index:
+                    row = ghcn_by_id.loc[wban_guess]
+                    if _haversine_km(lat, lon, row.lat, row.lon) <= GHCN_MATCH_SANITY_KM:
+                        ghcn_id, method = wban_guess, "wban"
+
+            if ghcn_id is None:
+                d = _haversine_km(lat, lon, ghcn.lat.values, ghcn.lon.values)
+                i = int(np.argmin(d))
+                if d[i] <= GHCN_NEAREST_NEIGHBOR_KM:
+                    ghcn_id, method = ghcn.GHCN_ID.values[i], "latlon"
+
+        if ghcn_id is None:
+            unmapped.append(usaf_id)
+        else:
+            metadata["ghcn_id"] = ghcn_id
+            metadata["ghcn_map_method"] = method
+
+    for usaf_id in unmapped:
+        del isd_station_metadata[usaf_id]
+
+    print("Removed {} stations with no GHCNh counterpart".format(len(unmapped)))
+
+
 def _load_isd_file_metadata(download_path, isd_station_metadata):
     """Collect data counts for isd files."""
 
@@ -673,6 +742,8 @@ def _create_table_structures(conn):
         , longitude text
         , elevation text
         , state text
+        , ghcn_id text not null
+        , ghcn_map_method text not null
         , quality text default 'low'
         , iecc_climate_zone text
         , iecc_moisture_regime text
@@ -779,6 +850,8 @@ def _write_isd_station_metadata_table(conn, isd_station_metadata):
             metadata["longitude"],
             metadata["elevation"],
             metadata["state"],
+            metadata["ghcn_id"],
+            metadata["ghcn_map_method"],
             metadata["quality"],
             metadata["iecc_climate_zone"],
             metadata["iecc_moisture_regime"],
@@ -799,12 +872,14 @@ def _write_isd_station_metadata_table(conn, isd_station_metadata):
         , longitude
         , elevation
         , state
+        , ghcn_id
+        , ghcn_map_method
         , quality
         , iecc_climate_zone
         , iecc_moisture_regime
         , ba_climate_zone
         , ca_climate_zone
-      ) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      ) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """,
         rows,
     )
@@ -1200,6 +1275,9 @@ def build_metadata_db(
 
     print("Loading ISD station metadata")
     isd_station_metadata = _load_isd_station_metadata(download_path)
+
+    print("Mapping ISD stations to GHCNh ids")
+    _map_isd_stations_to_ghcn(isd_station_metadata, download_path)
 
     print("Loading ISD station file metadata")
     isd_file_metadata = _load_isd_file_metadata(download_path, isd_station_metadata)

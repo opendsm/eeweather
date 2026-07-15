@@ -32,11 +32,11 @@ wget -N https://gist.githubusercontent.com/philngo/d3e251040569dba67942/raw/0c98
 
 # NCEI station lat lngs and metadata
 echo Downloading isd-history.csv
-wget -N ftp://ftp.ncei.noaa.gov/pub/data/noaa/isd-history.csv -P $DATA_DIR -q --show-progress
+wget -N https://www.ncei.noaa.gov/pub/data/noaa/isd-history.csv -P $DATA_DIR -q --show-progress
 
 # NCEI weather data quality
 echo Downloading isd-inventory.csv
-wget -N ftp://ftp.ncei.noaa.gov/pub/data/noaa/isd-inventory.csv -P $DATA_DIR -q --show-progress
+wget -N https://www.ncei.noaa.gov/pub/data/noaa/isd-inventory.csv -P $DATA_DIR -q --show-progress
 
 # Scrape-friendly TMY3 station list
 echo Downloading tmy3-stations.html
@@ -47,3 +47,7 @@ echo Downloading state zipcode prefixes
 wget -N https://gist.githubusercontent.com/philngo/247226aa89e5abf5869b981b9b841245/raw/56e25d8d590c001a18a1c0bab3ac69c53c09117c/zipcode_prefixes.json -P $DATA_DIR -q --show-progress
 
 echo Finished downloading primary source files
+
+# GHCNh station list for the usaf -> ghcn id mapping
+echo Downloading ghcnh-station-list.csv
+wget -N https://www.ncei.noaa.gov/oa/global-historical-climatology-network/hourly/doc/ghcnh-station-list.csv -P $DATA_DIR -q --show-progress
