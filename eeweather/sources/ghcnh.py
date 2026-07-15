@@ -18,6 +18,7 @@ limitations under the License.
 
 """
 import io
+import time
 
 import pandas as pd
 import requests
@@ -27,6 +28,8 @@ import requests
 API_URL = "https://www.ncei.noaa.gov/access/services/data/v1"
 
 API_REQUEST_TRIES = 3
+
+API_RETRY_BACKOFF_SECONDS = 5
 
 DATASET = "global-historical-climatology-network-hourly"
 
@@ -80,6 +83,9 @@ def fetch_ghcnh_hourly(ghcn_id, year, variables=DEFAULT_VARIABLES):
         except requests.RequestException:
             if attempt == API_REQUEST_TRIES - 1:
                 raise
+            # the api intermittently returns 5xx bursts; immediate retries
+            # land inside the burst
+            time.sleep(API_RETRY_BACKOFF_SECONDS * (attempt + 1))
         else:
             break
 

@@ -108,8 +108,12 @@ def main():
     results = []
     for quality, usaf_id, wban_id, ghcn_id, state in _sample_stations():
         for year in YEARS:
-            isd = _fetch_isd_hourly(usaf_id, wban_id, year)
-            ghcnh_raw = fetch_ghcnh_hourly(ghcn_id, year)
+            try:
+                isd = _fetch_isd_hourly(usaf_id, wban_id, year)
+                ghcnh_raw = fetch_ghcnh_hourly(ghcn_id, year)
+            except requests.RequestException as e:
+                print("{} {} {}: fetch failed ({})".format(usaf_id, state, year, e))
+                continue
             if isd is None or len(ghcnh_raw) == 0:
                 if isd is None:
                     n_isd_obs = 0
@@ -143,9 +147,9 @@ def main():
             )
 
             time.sleep(0.2)
+            pd.DataFrame(results).to_csv("validation_results.csv", index=False)
 
     df = pd.DataFrame(results)
-    df.to_csv("validation_results.csv", index=False)
     print("\n=== summary over {} station-years ===".format(len(df)))
     for col in ["mean_abs_delta", "p99_abs_delta", "annual_mean_delta"]:
         print(
