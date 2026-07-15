@@ -7,7 +7,7 @@
   })
 # ---
 # name: test_isd_file_metadata_table_count
-  47626
+  47646
 # ---
 # name: test_isd_station_metadata_table_content
   dict({
@@ -30,5 +30,5 @@
   })
 # ---
 # name: test_isd_station_metadata_table_count
-  4496
+  4497
 # ---

@@ -205,7 +205,21 @@ def _load_isd_station_metadata(download_path):
             "state": recent.STATE,
         }
 
+    for usaf_id, (lat, lon) in ISD_COORDINATE_CORRECTIONS.items():
+        if usaf_id in metadata:
+            metadata[usaf_id]["latitude"] = lat
+            metadata[usaf_id]["longitude"] = lon
+            metadata[usaf_id]["point"] = Point(float(lon), float(lat))
+
     return metadata
+
+
+# Corrections to known-bad coordinates in the upstream isd-history registry,
+# verified against the physical site location and the GHCNh station list.
+ISD_COORDINATE_CORRECTIONS = {
+    # Ann Arbor Municipal (KARB): isd-history longitude is off by 4 degrees
+    "725374": ("+42.223", "-083.740"),
+}
 
 
 GHCN_MATCH_SANITY_KM = 50.0

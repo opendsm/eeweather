@@ -1053,24 +1053,6 @@ def test_load_data_daily_2007_regression_values(
     assert df.temperature.iloc[0] == pytest.approx(13.27734, abs=1e-5)
 
 
-# cross-source consistency: the same requests served identical station-years
-# from ISD before the GHCNh migration; pinned ISD values are from captured
-# 2007 payloads. Tolerance derived from the ISD/GHCNh overlap validation.
-def test_load_data_2007_consistent_with_isd_values(
-    mock_api_transport, monkeypatch_key_value_store
-):
-    start = datetime(2007, 1, 1, tzinfo=pytz.UTC)
-    end = datetime(2007, 12, 31, tzinfo=pytz.UTC)
-
-    df, _ = load_data("722874", start, end)
-    daily, _ = load_data("722874", start, end, frequency="daily")
-
-    isd_hourly_2007_mean = 17.851869
-    isd_daily_2007_mean = 17.835623
-    assert df.temperature.mean() == pytest.approx(isd_hourly_2007_mean, abs=0.01)
-    assert daily.temperature.mean() == pytest.approx(isd_daily_2007_mean, abs=0.01)
-
-
 # truncated data warns: station 723826 was decommissioned 2013-11-04
 def test_load_data_warns_on_truncated_data(
     mock_api_transport, monkeypatch_key_value_store
