@@ -18,12 +18,11 @@ limitations under the License.
 
 """
 import tempfile
-from eeweather.cache import KeyValueStore, get_datetime_if_exists
-from datetime import datetime
-from datetime import UTC
-import pytz
+from eeweather.cache import KeyValueStore
+from datetime import datetime, timezone
 
 import pytest
+
 
 
 @pytest.fixture
@@ -46,7 +45,8 @@ def test_key_value_store(s):
     assert data["b"][1] == "two"
     assert data["b"][2] == 3.0
     dt1 = s.key_updated("a")
-    assert dt1.date() == datetime.now(UTC).date()
+    assert dt1.tzinfo is not None
+    assert dt1.date() == datetime.now(timezone.utc).date()
 
     # update key 'a'
     s.save_json("a", ["updated"])
@@ -73,15 +73,6 @@ def test_key_value_store_clear_single_key(s):
     assert s.key_exists("b") is False
 
 
-def test_get_datetime_if_exists(s):
-    data = None
-    result = get_datetime_if_exists(data)
-    assert result == None
-
-    data = [datetime(2018, 1, 1)]
-    result = get_datetime_if_exists(data)
-    assert result == pytz.utc.localize(datetime(2018, 1, 1))
-
-    data = [pytz.utc.localize(datetime(2018, 1, 1))]
-    result = get_datetime_if_exists(data)
-    assert result == pytz.utc.localize(datetime(2018, 1, 1))
+def test_key_value_store_rejects_non_sqlite_url():
+    with pytest.raises(ValueError, match="sqlite:///"):
+        KeyValueStore("postgresql://user@host/db")

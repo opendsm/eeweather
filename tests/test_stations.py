@@ -19,7 +19,9 @@ limitations under the License.
 """
 from datetime import datetime
 import pandas as pd
+import contextlib
 import pytest
+import sqlite3
 import pytz
 
 from eeweather import (
@@ -98,21 +100,13 @@ from eeweather.exceptions import (
     NonUTCTimezoneInfoError,
 )
 from eeweather.testing import (
-    MockNOAAFTPConnectionProxy,
     MockKeyValueStoreProxy,
     mock_request_text_tmy3,
     mock_request_text_cz2010,
 )
 
 import eeweather.testing
-from sqlalchemy.orm import Session
 
-
-@pytest.fixture
-def monkeypatch_noaa_ftp(monkeypatch):
-    monkeypatch.setattr(
-        "eeweather.connections.noaa_ftp_connection_proxy", MockNOAAFTPConnectionProxy()
-    )
 
 
 @pytest.fixture
@@ -136,7 +130,7 @@ def monkeypatch_key_value_store(monkeypatch):
 
 
 @pytest.fixture
-def monkeypatch_make_api_request(monkeypatch):
+def monkeypatch_make_api_request(monkeypatch, mock_api_transport):
     monkeypatch.setattr(
         "eeweather.access_api.make_api_request",
         eeweather.testing.monkey_patch_make_api_request_return_empty,
@@ -144,12 +138,19 @@ def monkeypatch_make_api_request(monkeypatch):
 
 
 @pytest.fixture
-def monkeypatch_make_api_request_v2(monkeypatch):
+def monkeypatch_make_api_request_v2(monkeypatch, mock_api_transport):
     monkeypatch.setattr(
         "eeweather.access_api.make_api_request",
         eeweather.testing.monkey_patch_make_api_request_return_empty_v2,
     )
 
+
+
+def _backdate_cache_key(store, key, updated):
+    with contextlib.closing(sqlite3.connect(store._path)) as conn, conn:
+        conn.execute(
+            "update items set updated = ? where key = ?", (updated.isoformat(), key)
+        )
 
 def test_get_isd_station_metadata():
     assert get_isd_station_metadata("722874") == {
@@ -397,27 +398,27 @@ def test_isd_station_get_isd_file_metadata():
 
 
 # fetch raw
-def test_fetch_isd_raw_temp_data(monkeypatch_noaa_ftp):
+def test_fetch_isd_raw_temp_data(mock_api_transport):
     data = fetch_isd_raw_temp_data("722874", 2007)
     assert round(data.sum()) == pytest.approx(185945, 0.00001)
     assert data.shape == (11094,)
 
 
-def test_fetch_gsod_raw_temp_data(monkeypatch_noaa_ftp):
+def test_fetch_gsod_raw_temp_data(mock_api_transport):
     data = fetch_gsod_raw_temp_data("722874", 2007)
     assert data.sum() == pytest.approx(6509.5, 0.00001)
     assert data.shape == (365,)
 
 
 # station fetch raw
-def test_isd_station_fetch_isd_raw_temp_data(monkeypatch_noaa_ftp):
+def test_isd_station_fetch_isd_raw_temp_data(mock_api_transport):
     station = ISDStation("722874")
     data = station.fetch_isd_raw_temp_data(2007)
     assert round(data.sum()) == pytest.approx(185945, 0.00001)
     assert data.shape == (11094,)
 
 
-def test_isd_station_fetch_gsod_raw_temp_data(monkeypatch_noaa_ftp):
+def test_isd_station_fetch_gsod_raw_temp_data(mock_api_transport):
     station = ISDStation("722874")
     data = station.fetch_gsod_raw_temp_data(2007)
     assert data.sum() == pytest.approx(6509.5, 0.00001)
@@ -436,12 +437,12 @@ def test_fetch_gsod_raw_temp_data_invalid_station():
 
 
 # fetch raw invalid year
-def test_fetch_isd_raw_temp_data_invalid_year(monkeypatch_noaa_ftp):
+def test_fetch_isd_raw_temp_data_invalid_year(mock_api_transport):
     with pytest.raises(ISDDataNotAvailableError):
         fetch_isd_raw_temp_data("722874", 1800)
 
 
-def test_fetch_gsod_raw_temp_data_invalid_year(monkeypatch_noaa_ftp):
+def test_fetch_gsod_raw_temp_data_invalid_year(mock_api_transport):
     with pytest.raises(GSODDataNotAvailableError):
         fetch_gsod_raw_temp_data("722874", 1800)
 
@@ -455,19 +456,19 @@ def test_isd_station_fetch_isd_raw_temp_data_all_nan(monkeypatch_make_api_reques
 
 
 # fetch
-def test_fetch_isd_hourly_temp_data(monkeypatch_noaa_ftp):
+def test_fetch_isd_hourly_temp_data(mock_api_transport):
     data = fetch_isd_hourly_temp_data("722874", 2007)
     assert data.sum() == pytest.approx(156160.0355, 0.00001)
     assert data.shape == (8760,)
 
 
-def test_fetch_isd_daily_temp_data(monkeypatch_noaa_ftp):
+def test_fetch_isd_daily_temp_data(mock_api_transport):
     data = fetch_isd_daily_temp_data("722874", 2007)
     assert data.sum() == pytest.approx(6510.002260821784, 0.00001)
     assert data.shape == (365,)
 
 
-def test_fetch_gsod_daily_temp_data(monkeypatch_noaa_ftp):
+def test_fetch_gsod_daily_temp_data(mock_api_transport):
     data = fetch_gsod_daily_temp_data("722874", 2007)
     assert data.sum() == pytest.approx(6509.5, 0.00001)
     assert data.shape == (365,)
@@ -486,21 +487,21 @@ def test_fetch_cz2010_hourly_temp_data(monkeypatch_cz2010_request):
 
 
 # station fetch
-def test_isd_station_fetch_isd_hourly_temp_data(monkeypatch_noaa_ftp):
+def test_isd_station_fetch_isd_hourly_temp_data(mock_api_transport):
     station = ISDStation("722874")
     data = station.fetch_isd_hourly_temp_data(2007)
     assert data.sum() == pytest.approx(156160.0355, 0.00001)
     assert data.shape == (8760,)
 
 
-def test_isd_station_fetch_isd_daily_temp_data(monkeypatch_noaa_ftp):
+def test_isd_station_fetch_isd_daily_temp_data(mock_api_transport):
     station = ISDStation("722874")
     data = station.fetch_isd_daily_temp_data(2007)
     assert data.sum() == pytest.approx(6510, 0.00001)
     assert data.shape == (365,)
 
 
-def test_isd_station_fetch_gsod_daily_temp_data(monkeypatch_noaa_ftp):
+def test_isd_station_fetch_gsod_daily_temp_data(mock_api_transport):
     station = ISDStation("722874")
     data = station.fetch_gsod_daily_temp_data(2007)
     assert data.sum() == pytest.approx(6509.5, 0.00001)
@@ -547,7 +548,7 @@ def test_fetch_cz2010_hourly_temp_data_invalid():
         fetch_cz2010_hourly_temp_data("INVALID")
 
 
-def test_fetch_tmy3_hourly_temp_data_not_in_tmy3_list(monkeypatch_noaa_ftp):
+def test_fetch_tmy3_hourly_temp_data_not_in_tmy3_list(mock_api_transport):
     data = fetch_isd_hourly_temp_data("722874", 2007)
     assert data.sum() == pytest.approx(156160.0355, 0.00001)
     assert data.shape == (8760,)
@@ -651,21 +652,21 @@ def test_isd_station_cached_gsod_daily_temp_data_is_expired_empty(
 
 # cache expired false
 def test_cached_isd_hourly_temp_data_is_expired_false(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    mock_api_transport, monkeypatch_key_value_store
 ):
     load_isd_hourly_temp_data_cached_proxy("722874", 2007)
     assert cached_isd_hourly_temp_data_is_expired("722874", 2007) is False
 
 
 def test_cached_isd_daily_temp_data_is_expired_false(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    mock_api_transport, monkeypatch_key_value_store
 ):
     load_isd_daily_temp_data_cached_proxy("722874", 2007)
     assert cached_isd_daily_temp_data_is_expired("722874", 2007) is False
 
 
 def test_cached_gsod_daily_temp_data_is_expired_false(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    mock_api_transport, monkeypatch_key_value_store
 ):
     load_gsod_daily_temp_data_cached_proxy("722874", 2007)
     assert cached_gsod_daily_temp_data_is_expired("722874", 2007) is False
@@ -673,61 +674,43 @@ def test_cached_gsod_daily_temp_data_is_expired_false(
 
 # cache expired true
 def test_cached_isd_hourly_temp_data_is_expired_true(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    mock_api_transport, monkeypatch_key_value_store
 ):
     load_isd_hourly_temp_data_cached_proxy("722874", 2007)
 
     # manually expire key value item
     key = get_isd_hourly_temp_data_cache_key("722874", 2007)
-    store = monkeypatch_key_value_store
-    s = (
-        store.items.update()
-        .where(store.items.c.key == key)
-        .values(updated=pytz.UTC.localize(datetime(2007, 3, 3)))
+    _backdate_cache_key(
+        monkeypatch_key_value_store, key, pytz.UTC.localize(datetime(2007, 3, 3))
     )
-    with Session(store.eng) as session:
-        session.execute(s)
-        session.commit()
 
     assert cached_isd_hourly_temp_data_is_expired("722874", 2007) is True
 
 
 def test_cached_isd_daily_temp_data_is_expired_true(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    mock_api_transport, monkeypatch_key_value_store
 ):
     load_isd_daily_temp_data_cached_proxy("722874", 2007)
 
     # manually expire key value item
     key = get_isd_daily_temp_data_cache_key("722874", 2007)
-    store = monkeypatch_key_value_store
-    s = (
-        store.items.update()
-        .where(store.items.c.key == key)
-        .values(updated=pytz.UTC.localize(datetime(2007, 3, 3)))
+    _backdate_cache_key(
+        monkeypatch_key_value_store, key, pytz.UTC.localize(datetime(2007, 3, 3))
     )
-    with Session(store.eng) as session:
-        session.execute(s)
-        session.commit()
 
     assert cached_isd_daily_temp_data_is_expired("722874", 2007) is True
 
 
 def test_cached_gsod_daily_temp_data_is_expired_true(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    mock_api_transport, monkeypatch_key_value_store
 ):
     load_gsod_daily_temp_data_cached_proxy("722874", 2007)
 
     # manually expire key value item
     key = get_gsod_daily_temp_data_cache_key("722874", 2007)
-    store = monkeypatch_key_value_store
-    s = (
-        store.items.update()
-        .where(store.items.c.key == key)
-        .values(updated=pytz.UTC.localize(datetime(2007, 3, 3)))
+    _backdate_cache_key(
+        monkeypatch_key_value_store, key, pytz.UTC.localize(datetime(2007, 3, 3))
     )
-    with Session(store.eng) as session:
-        session.execute(s)
-        session.commit()
 
     assert cached_gsod_daily_temp_data_is_expired("722874", 2007) is True
 
@@ -791,35 +774,35 @@ def test_isd_station_validate_cz2010_hourly_temp_data_cache_empty(
 
 # error on non-existent when relying on cache
 def test_raise_on_missing_isd_hourly_temp_data_cache_data_no_web_fetch(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    mock_api_transport, monkeypatch_key_value_store
 ):
     with pytest.raises(ISDDataNotAvailableError):
         load_isd_hourly_temp_data_cached_proxy("722874", 1907, fetch_from_web=False)
 
 
 def test_raise_on_missing_isd_daily_temp_data_cache_data_no_web_fetch(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    mock_api_transport, monkeypatch_key_value_store
 ):
     with pytest.raises(ISDDataNotAvailableError):
         load_isd_daily_temp_data_cached_proxy("722874", 1907, fetch_from_web=False)
 
 
 def test_raise_on_missing_gsod_daily_temp_data_cache_data_no_web_fetch(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    mock_api_transport, monkeypatch_key_value_store
 ):
     with pytest.raises(GSODDataNotAvailableError):
         load_gsod_daily_temp_data_cached_proxy("722874", 1907, fetch_from_web=False)
 
 
 def test_raise_on_missing_tmy3_hourly_temp_data_cache_data_no_web_fetch(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    mock_api_transport, monkeypatch_key_value_store
 ):
     with pytest.raises(TMY3DataNotAvailableError):
         load_tmy3_hourly_temp_data_cached_proxy("722874", fetch_from_web=False)
 
 
 def test_raise_on_missing_cz2010_hourly_temp_data_cache_data_no_web_fetch(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    mock_api_transport, monkeypatch_key_value_store
 ):
     with pytest.raises(CZ2010DataNotAvailableError):
         load_cz2010_hourly_temp_data_cached_proxy("722874", fetch_from_web=False)
@@ -827,21 +810,21 @@ def test_raise_on_missing_cz2010_hourly_temp_data_cache_data_no_web_fetch(
 
 # validate updated recently
 def test_validate_isd_hourly_temp_data_cache_updated_recently(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    mock_api_transport, monkeypatch_key_value_store
 ):
     load_isd_hourly_temp_data_cached_proxy("722874", 2007)
     assert validate_isd_hourly_temp_data_cache("722874", 2007) is True
 
 
 def test_validate_isd_daily_temp_data_cache_updated_recently(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    mock_api_transport, monkeypatch_key_value_store
 ):
     load_isd_daily_temp_data_cached_proxy("722874", 2007)
     assert validate_isd_daily_temp_data_cache("722874", 2007) is True
 
 
 def test_validate_gsod_daily_temp_data_cache_updated_recently(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    mock_api_transport, monkeypatch_key_value_store
 ):
     load_gsod_daily_temp_data_cached_proxy("722874", 2007)
     assert validate_gsod_daily_temp_data_cache("722874", 2007) is True
@@ -863,62 +846,43 @@ def test_validate_cz2010_hourly_temp_data_cache_updated_recently(
 
 # validate expired
 def test_validate_isd_hourly_temp_data_cache_expired(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    mock_api_transport, monkeypatch_key_value_store
 ):
     load_isd_hourly_temp_data_cached_proxy("722874", 2007)
 
     # manually expire key value item
     key = get_isd_hourly_temp_data_cache_key("722874", 2007)
-    store = monkeypatch_key_value_store
-    s = (
-        store.items.update()
-        .where(store.items.c.key == key)
-        .values(updated=pytz.UTC.localize(datetime(2007, 3, 3)))
+    _backdate_cache_key(
+        monkeypatch_key_value_store, key, pytz.UTC.localize(datetime(2007, 3, 3))
     )
-    with Session(store.eng) as session:
-        session.execute(s)
-        session.commit()
 
     assert validate_isd_hourly_temp_data_cache("722874", 2007) is False
 
 
 def test_validate_isd_daily_temp_data_cache_expired(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    mock_api_transport, monkeypatch_key_value_store
 ):
     load_isd_daily_temp_data_cached_proxy("722874", 2007)
 
     # manually expire key value item
     key = get_isd_daily_temp_data_cache_key("722874", 2007)
-    store = monkeypatch_key_value_store
-    s = (
-        store.items.update()
-        .where(store.items.c.key == key)
-        .values(updated=pytz.UTC.localize(datetime(2007, 3, 3)))
+    _backdate_cache_key(
+        monkeypatch_key_value_store, key, pytz.UTC.localize(datetime(2007, 3, 3))
     )
-    with Session(store.eng) as session:
-        session.execute(s)
-        session.commit()
 
     assert validate_isd_daily_temp_data_cache("722874", 2007) is False
 
 
 def test_validate_gsod_daily_temp_data_cache_expired(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    mock_api_transport, monkeypatch_key_value_store
 ):
     load_gsod_daily_temp_data_cached_proxy("722874", 2007)
 
     # manually expire key value item
     key = get_gsod_daily_temp_data_cache_key("722874", 2007)
-    store = monkeypatch_key_value_store
-    s = (
-        store.items.update()
-        .where(store.items.c.key == key)
-        .values(updated=pytz.UTC.localize(datetime(2007, 3, 3)))
+    _backdate_cache_key(
+        monkeypatch_key_value_store, key, pytz.UTC.localize(datetime(2007, 3, 3))
     )
-
-    with Session(store.eng) as session:
-        session.execute(s)
-        session.commit()
 
     assert validate_gsod_daily_temp_data_cache("722874", 2007) is False
 
@@ -1256,7 +1220,7 @@ def test_isd_station_write_read_destroy_cz2010_hourly_temp_data_to_from_cache(
 
 # load cached proxy
 def test_load_isd_hourly_temp_data_cached_proxy(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    mock_api_transport, monkeypatch_key_value_store
 ):
     # doesn't yet guarantee that all code paths are taken,
     # except that coverage picks it up either here or elsewhere
@@ -1267,7 +1231,7 @@ def test_load_isd_hourly_temp_data_cached_proxy(
 
 
 def test_load_isd_daily_temp_data_cached_proxy(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    mock_api_transport, monkeypatch_key_value_store
 ):
     # doesn't yet guarantee that all code paths are taken,
     # except that coverage picks it up either here or elsewhere
@@ -1278,7 +1242,7 @@ def test_load_isd_daily_temp_data_cached_proxy(
 
 
 def test_load_gsod_daily_temp_data_cached_proxy(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    mock_api_transport, monkeypatch_key_value_store
 ):
     # doesn't yet guarantee that all code paths are taken,
     # except that coverage picks it up either here or elsewhere
@@ -1312,7 +1276,7 @@ def test_load_cz2010_hourly_temp_data_cached_proxy(
 
 # station load cached proxy
 def test_isd_station_load_isd_hourly_temp_data_cached_proxy(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    mock_api_transport, monkeypatch_key_value_store
 ):
     station = ISDStation("722874")
 
@@ -1325,7 +1289,7 @@ def test_isd_station_load_isd_hourly_temp_data_cached_proxy(
 
 
 def test_isd_station_load_isd_daily_temp_data_cached_proxy(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    mock_api_transport, monkeypatch_key_value_store
 ):
     station = ISDStation("722874")
 
@@ -1338,7 +1302,7 @@ def test_isd_station_load_isd_daily_temp_data_cached_proxy(
 
 
 def test_isd_station_load_gsod_daily_temp_data_cached_proxy(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    mock_api_transport, monkeypatch_key_value_store
 ):
     station = ISDStation("722874")
 
@@ -1468,14 +1432,14 @@ def test_load_cz2010_hourly_temp_data(
     end = datetime(2007, 4, 3, tzinfo=pytz.UTC)
     ts = load_cz2010_hourly_temp_data("722880", start, end)
     assert ts.index[0] == start
-    assert pd.notnull(ts[1])
+    assert pd.notnull(ts.iloc[1])
     assert ts.index[-1] == end
     assert pd.notnull(ts.iloc[-1])
 
 
 # station load data between dates
 def test_isd_station_load_isd_hourly_temp_data(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    mock_api_transport, monkeypatch_key_value_store
 ):
     station = ISDStation("722874")
     start = datetime(2007, 3, 3, tzinfo=pytz.UTC)
@@ -1486,7 +1450,7 @@ def test_isd_station_load_isd_hourly_temp_data(
 
 
 def test_isd_station_load_isd_daily_temp_data(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    mock_api_transport, monkeypatch_key_value_store
 ):
     station = ISDStation("722874")
     start = datetime(2007, 3, 3, tzinfo=pytz.UTC)
@@ -1497,7 +1461,7 @@ def test_isd_station_load_isd_daily_temp_data(
 
 
 def test_isd_station_load_gsod_daily_temp_data(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    mock_api_transport, monkeypatch_key_value_store
 ):
     station = ISDStation("722874")
     start = datetime(2007, 3, 3, tzinfo=pytz.UTC)
@@ -1531,7 +1495,7 @@ def test_isd_station_load_cz2010_hourly_temp_data(
 
 # load cached
 def test_load_cached_isd_hourly_temp_data(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    mock_api_transport, monkeypatch_key_value_store
 ):
     ts = load_cached_isd_hourly_temp_data("722874")
     assert ts is None
@@ -1547,7 +1511,7 @@ def test_load_cached_isd_hourly_temp_data(
 
 
 def test_load_cached_isd_daily_temp_data(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    mock_api_transport, monkeypatch_key_value_store
 ):
     ts = load_cached_isd_daily_temp_data("722874")
     assert ts is None
@@ -1563,7 +1527,7 @@ def test_load_cached_isd_daily_temp_data(
 
 
 def test_load_cached_gsod_daily_temp_data(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    mock_api_transport, monkeypatch_key_value_store
 ):
     ts = load_cached_gsod_daily_temp_data("722874")
     assert ts is None
@@ -1612,7 +1576,7 @@ def test_load_cached_cz2010_hourly_temp_data(
 
 # station load cached
 def test_isd_station_load_cached_isd_hourly_temp_data(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    mock_api_transport, monkeypatch_key_value_store
 ):
     station = ISDStation("722874")
 
@@ -1630,7 +1594,7 @@ def test_isd_station_load_cached_isd_hourly_temp_data(
 
 
 def test_isd_station_load_cached_isd_daily_temp_data(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    mock_api_transport, monkeypatch_key_value_store
 ):
     station = ISDStation("722874")
 
@@ -1648,7 +1612,7 @@ def test_isd_station_load_cached_isd_daily_temp_data(
 
 
 def test_isd_station_load_cached_gsod_daily_temp_data(
-    monkeypatch_noaa_ftp, monkeypatch_key_value_store
+    mock_api_transport, monkeypatch_key_value_store
 ):
     station = ISDStation("722874")
 
@@ -1852,3 +1816,249 @@ def test_isd_station_load_isd_hourly_temp_data_missing_years(
     assert pd.isnull(ts.iloc[0])
     assert ts.index[-1] == end
     assert pd.notnull(ts.iloc[-1])
+
+
+# station 720193's 2019 data has a real mid-year outage
+def test_load_isd_hourly_temp_data_warns_on_internal_gap(
+    mock_api_transport, monkeypatch_key_value_store
+):
+    start = datetime(2019, 1, 1, tzinfo=pytz.UTC)
+    end = datetime(2019, 12, 31, tzinfo=pytz.UTC)
+
+    ts, warnings = load_isd_hourly_temp_data("720193", start, end)
+
+    assert len(ts) == 8737
+    assert int(ts.notna().sum()) == 8106
+    assert [w.qualified_name for w in warnings] == ["eeweather.data_gap"]
+    assert warnings[0].data["max_gap_days"] == pytest.approx(16.125, abs=1e-9)
+
+
+def test_load_gsod_daily_temp_data_warns_on_internal_gap(
+    mock_api_transport, monkeypatch_key_value_store
+):
+    start = datetime(2019, 1, 1, tzinfo=pytz.UTC)
+    end = datetime(2019, 12, 31, tzinfo=pytz.UTC)
+
+    with pytest.warns(UserWarning, match="internal gap of 25 days"):
+        ts = load_gsod_daily_temp_data("720193", start, end)
+
+    assert len(ts) == 365
+    assert int(ts.notna().sum()) == 340
+    assert ts.mean() == pytest.approx(12.24902, abs=1e-5)
+
+
+# a trailing gap shorter than a day does not warn: station 724940's last
+# 2025 observation is 17 hours before the requested end
+def test_load_isd_hourly_temp_data_short_trailing_gap_no_warning(
+    mock_api_transport, monkeypatch_key_value_store
+):
+    start = datetime(2025, 6, 1, tzinfo=pytz.UTC)
+    end = datetime(2025, 8, 28, tzinfo=pytz.UTC)
+
+    ts, warnings = load_isd_hourly_temp_data("724940", start, end)
+
+    assert len(ts) == 2113
+    assert int(ts.notna().sum()) == 2096
+    assert ts.last_valid_index() == datetime(2025, 8, 27, 7, tzinfo=pytz.UTC)
+    assert warnings == []
+
+
+# regression pins on real captured 2007 data
+def test_load_isd_hourly_temp_data_2007_regression_values(
+    mock_api_transport, monkeypatch_key_value_store
+):
+    start = datetime(2007, 1, 1, tzinfo=pytz.UTC)
+    end = datetime(2007, 12, 31, tzinfo=pytz.UTC)
+
+    ts, warnings = load_isd_hourly_temp_data("722874", start, end)
+
+    assert len(ts) == 8737
+    assert int(ts.notna().sum()) == 8732
+    assert ts.mean() == pytest.approx(17.851869, abs=1e-5)
+    assert ts.first_valid_index() == datetime(2007, 1, 1, tzinfo=pytz.UTC)
+    assert ts.dropna().iloc[0] == pytest.approx(14.89, abs=1e-5)
+    assert warnings == []
+
+
+def test_load_isd_daily_temp_data_2007_regression_values(
+    mock_api_transport, monkeypatch_key_value_store
+):
+    start = datetime(2007, 1, 1, tzinfo=pytz.UTC)
+    end = datetime(2007, 12, 31, tzinfo=pytz.UTC)
+
+    ts = load_isd_daily_temp_data("722874", start, end)
+
+    assert len(ts) == 365
+    assert int(ts.notna().sum()) == 365
+    assert ts.mean() == pytest.approx(17.835623, abs=1e-5)
+    assert ts.iloc[0] == pytest.approx(13.222929, abs=1e-5)
+
+
+# truncated data warns: station 724940 ISD data ends 2025-08-27
+def test_load_isd_hourly_temp_data_warns_on_truncated_data(
+    mock_api_transport, monkeypatch_key_value_store
+):
+    start = datetime(2025, 6, 1, tzinfo=pytz.UTC)
+    end = datetime(2025, 10, 1, tzinfo=pytz.UTC)
+
+    ts, warnings = load_isd_hourly_temp_data("724940", start, end)
+
+    assert len(ts) == 2929
+    assert int(ts.notna().sum()) == 2096
+    assert ts.last_valid_index() == datetime(2025, 8, 27, 7, tzinfo=pytz.UTC)
+    assert [w.qualified_name for w in warnings] == ["eeweather.data_truncated"]
+    assert warnings[0].data["last_valid"] == "2025-08-27T07:00:00+00:00"
+    assert warnings[0].data["requested_end"] == "2025-10-01T00:00:00+00:00"
+
+
+def test_load_gsod_daily_temp_data_warns_on_truncated_data(
+    mock_api_transport, monkeypatch_key_value_store
+):
+    start = datetime(2025, 6, 1, tzinfo=pytz.UTC)
+    end = datetime(2025, 10, 1, tzinfo=pytz.UTC)
+
+    with pytest.warns(UserWarning, match="Data ends 35 days"):
+        ts = load_gsod_daily_temp_data("724940", start, end)
+
+    assert len(ts) == 123
+    assert int(ts.notna().sum()) == 88
+    assert ts.last_valid_index() == datetime(2025, 8, 27, tzinfo=pytz.UTC)
+
+
+# all-years-missing behavior
+def test_load_isd_hourly_temp_data_missing_year_strict_raises(
+    mock_api_transport, monkeypatch_key_value_store
+):
+    start = datetime(2050, 1, 1, tzinfo=pytz.UTC)
+    end = datetime(2050, 6, 1, tzinfo=pytz.UTC)
+
+    with pytest.raises(ISDDataNotAvailableError):
+        load_isd_hourly_temp_data("722874", start, end)
+
+
+def test_load_isd_hourly_temp_data_missing_year_tolerant_returns_nan_range(
+    mock_api_transport, monkeypatch_key_value_store
+):
+    start = datetime(2050, 1, 1, tzinfo=pytz.UTC)
+    end = datetime(2050, 6, 1, tzinfo=pytz.UTC)
+
+    ts, warnings = load_isd_hourly_temp_data(
+        "722874", start, end, error_on_missing_years=False
+    )
+
+    assert ts.index[0] == start
+    assert ts.index[-1] == end
+    assert ts.isna().all()
+    assert [w.qualified_name for w in warnings] == [
+        "eeweather.isd_data_not_available",
+        "eeweather.no_data_in_requested_range",
+    ]
+
+
+def test_load_isd_daily_temp_data_missing_year_strict_raises(
+    mock_api_transport, monkeypatch_key_value_store
+):
+    start = datetime(2050, 1, 1, tzinfo=pytz.UTC)
+    end = datetime(2050, 6, 1, tzinfo=pytz.UTC)
+
+    with pytest.raises(ISDDataNotAvailableError):
+        load_isd_daily_temp_data("722874", start, end)
+
+
+def test_load_isd_daily_temp_data_missing_year_tolerant_warns_and_fills_nan(
+    mock_api_transport, monkeypatch_key_value_store
+):
+    start = datetime(2050, 1, 1, tzinfo=pytz.UTC)
+    end = datetime(2050, 6, 1, tzinfo=pytz.UTC)
+
+    with pytest.warns(UserWarning) as record:
+        ts = load_isd_daily_temp_data(
+            "722874", start, end, error_on_missing_years=False
+        )
+
+    messages = [str(w.message) for w in record]
+    assert any("ISD data not available for 722874 in 2050" in m for m in messages)
+    assert any("No data was available" in m for m in messages)
+
+    assert ts.index[0] == start
+    assert ts.index[-1] == end
+    assert ts.isna().all()
+
+
+def test_load_gsod_daily_temp_data_missing_year_strict_raises(
+    mock_api_transport, monkeypatch_key_value_store
+):
+    start = datetime(2050, 1, 1, tzinfo=pytz.UTC)
+    end = datetime(2050, 6, 1, tzinfo=pytz.UTC)
+
+    with pytest.raises(GSODDataNotAvailableError):
+        load_gsod_daily_temp_data("722874", start, end)
+
+
+def test_load_gsod_daily_temp_data_missing_year_tolerant_warns_and_fills_nan(
+    mock_api_transport, monkeypatch_key_value_store
+):
+    start = datetime(2050, 1, 1, tzinfo=pytz.UTC)
+    end = datetime(2050, 6, 1, tzinfo=pytz.UTC)
+
+    with pytest.warns(UserWarning) as record:
+        ts = load_gsod_daily_temp_data(
+            "722874", start, end, error_on_missing_years=False
+        )
+
+    messages = [str(w.message) for w in record]
+    assert any("GSOD data not available for 722874 in 2050" in m for m in messages)
+    assert any("No data was available" in m for m in messages)
+
+    assert ts.index[0] == start
+    assert ts.index[-1] == end
+    assert ts.isna().all()
+
+
+# a year that exists but contains no valid temperatures: 722874 in 2025
+# reports only daily summaries with missing temperature values
+def test_fetch_isd_raw_temp_data_all_nan_year(mock_api_transport):
+    ts = fetch_isd_raw_temp_data("722874", 2025)
+
+    assert len(ts) == 206
+    assert ts.isna().all()
+
+
+def test_load_isd_hourly_temp_data_all_nan_year_warns_no_data(
+    mock_api_transport, monkeypatch_key_value_store
+):
+    start = datetime(2025, 1, 1, tzinfo=pytz.UTC)
+    end = datetime(2025, 6, 1, tzinfo=pytz.UTC)
+
+    ts, warnings = load_isd_hourly_temp_data("722874", start, end)
+
+    assert ts.isna().all()
+    assert [w.qualified_name for w in warnings] == [
+        "eeweather.no_data_in_requested_range"
+    ]
+
+
+# start not exactly on an hour rounds forward to the next hour
+def test_load_isd_hourly_temp_data_start_mid_hour_aligns_forward(
+    mock_api_transport, monkeypatch_key_value_store
+):
+    start = datetime(2007, 1, 1, 0, 30, tzinfo=pytz.UTC)
+    end = datetime(2007, 2, 1, tzinfo=pytz.UTC)
+
+    ts, warnings = load_isd_hourly_temp_data("722874", start, end)
+
+    assert ts.index[0] == datetime(2007, 1, 1, 1, 0, tzinfo=pytz.UTC)
+    assert ts.index[-1] == end
+
+
+# a sub-hour range contains no aligned hours; returns empty without warning
+def test_load_isd_hourly_temp_data_sub_hour_range_returns_empty(
+    mock_api_transport, monkeypatch_key_value_store
+):
+    start = datetime(2007, 6, 1, 12, 30, tzinfo=pytz.UTC)
+    end = datetime(2007, 6, 1, 12, 45, tzinfo=pytz.UTC)
+
+    ts, warnings = load_isd_hourly_temp_data("722874", start, end)
+
+    assert len(ts) == 0
+    assert warnings == []

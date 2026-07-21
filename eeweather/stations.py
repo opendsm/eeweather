@@ -19,6 +19,8 @@ limitations under the License.
 """
 from datetime import datetime, timedelta, timezone
 import gzip
+import warnings as pywarnings
+
 import pandas as pd
 import pytz
 
@@ -113,6 +115,73 @@ __all__ = (
 def _datetime_is_utc(dt):
     orig_tzinfo = dt.tzinfo
     return False if orig_tzinfo is None else dt.utcoffset().seconds == 0
+
+
+TRAILING_GAP_WARNING_THRESHOLD = timedelta(days=1)
+INTERNAL_GAP_WARNING_THRESHOLD = timedelta(days=7)
+
+
+def _data_gap_warnings(ts):
+    """EEWeatherWarnings for requested ranges the returned data does not cover.
+
+    Emitted when the series is entirely empty, when it ends more than
+    TRAILING_GAP_WARNING_THRESHOLD before the end of the requested range, or
+    when it contains an internal gap longer than INTERNAL_GAP_WARNING_THRESHOLD.
+    """
+    warnings = []
+    if len(ts) == 0:
+        return warnings
+
+    if ts.isna().all():
+        warnings.append(
+            EEWeatherWarning(
+                qualified_name="eeweather.no_data_in_requested_range",
+                description="No data was available within the requested range.",
+                data={
+                    "requested_start": ts.index[0].isoformat(),
+                    "requested_end": ts.index[-1].isoformat(),
+                },
+            )
+        )
+
+        return warnings
+
+    last_valid = ts.last_valid_index()
+    trailing_gap = ts.index[-1] - last_valid
+    if trailing_gap > TRAILING_GAP_WARNING_THRESHOLD:
+        warnings.append(
+            EEWeatherWarning(
+                qualified_name="eeweather.data_truncated",
+                description=(
+                    "Data ends {} before the end of the requested range.".format(
+                        trailing_gap
+                    )
+                ),
+                data={
+                    "last_valid": last_valid.isoformat(),
+                    "requested_end": ts.index[-1].isoformat(),
+                },
+            )
+        )
+
+    interior = ts.loc[ts.first_valid_index() : last_valid]
+    if len(interior) > 1:
+        period = interior.index[1] - interior.index[0]
+        is_missing = interior.isna()
+        max_gap_periods = int(is_missing.groupby((~is_missing).cumsum()).sum().max())
+        max_gap = max_gap_periods * period
+        if max_gap > INTERNAL_GAP_WARNING_THRESHOLD:
+            warnings.append(
+                EEWeatherWarning(
+                    qualified_name="eeweather.data_gap",
+                    description=(
+                        "Data contains an internal gap of {}.".format(max_gap)
+                    ),
+                    data={"max_gap_days": max_gap / timedelta(days=1)},
+                )
+            )
+
+    return warnings
 
 
 def get_isd_filenames(usaf_id, target_year=None, filename_format=None, with_host=False):
@@ -864,7 +933,7 @@ def load_isd_hourly_temp_data(
     end,
     read_from_cache=True,
     write_to_cache=True,
-    error_on_missing_years=False,
+    error_on_missing_years=True,
     fetch_from_web=True,
 ):
     warnings = []
@@ -894,7 +963,6 @@ def load_isd_hourly_temp_data(
                         data={"year": year},
                     )
                 )
-                pass
     else:
         data = [
             load_isd_hourly_temp_data_cached_proxy(
@@ -907,99 +975,145 @@ def load_isd_hourly_temp_data(
             for year in range(start.year, end.year + 1)
         ]
 
-    # get raw data from loaded years into hourly form
-    ts = pd.concat(data).resample("h").mean()
+    if data:
+        # get raw data from loaded years into hourly form
+        ts = pd.concat(data).resample("h").mean()
 
-    # whittle down to desired range
-    ts = ts[start:end]
+        # whittle down to desired range
+        ts = ts[start:end]
+    else:
+        ts = pd.Series([], dtype=float, index=pd.DatetimeIndex([], tz=pytz.UTC))
 
-    if len(ts) > 0:
-        # because start and end dates need.to fall exactly on hours
-        ts_start = datetime(
-            start.year, start.month, start.day, start.hour, tzinfo=pytz.UTC
-        )
-        # add an hour if not already exactly on an hour, which guarantees
-        # that ts_start is greater than or equal to start.
-        if ts_start < start:
-            ts_start += timedelta(seconds=3600)
-        ts_end = datetime(end.year, end.month, end.day, end.hour, tzinfo=pytz.UTC)
-        # fill in gaps
-        ts = ts.reindex(pd.date_range(ts_start, ts_end, freq="h", tz=pytz.UTC))
+    # because start and end dates need to fall exactly on hours
+    ts_start = datetime(start.year, start.month, start.day, start.hour, tzinfo=pytz.UTC)
+    # add an hour if not already exactly on an hour, which guarantees
+    # that ts_start is greater than or equal to start.
+    if ts_start < start:
+        ts_start += timedelta(seconds=3600)
+    ts_end = datetime(end.year, end.month, end.day, end.hour, tzinfo=pytz.UTC)
+
+    # fill in gaps, covering the full requested range even when no data loaded
+    ts = ts.reindex(pd.date_range(ts_start, ts_end, freq="h", tz=pytz.UTC))
+    warnings.extend(_data_gap_warnings(ts))
+
     return ts, warnings
 
 
 def load_isd_daily_temp_data(
-    usaf_id, start, end, read_from_cache=True, write_to_cache=True, fetch_from_web=True
+    usaf_id,
+    start,
+    end,
+    read_from_cache=True,
+    write_to_cache=True,
+    error_on_missing_years=True,
+    fetch_from_web=True,
 ):
     # CalTRACK 2.3.3
     if start.tzinfo != pytz.UTC:
         raise NonUTCTimezoneInfoError(start)
     if end.tzinfo != pytz.UTC:
         raise NonUTCTimezoneInfoError(end)
-    data = [
-        load_isd_daily_temp_data_cached_proxy(
-            usaf_id,
-            year,
-            read_from_cache=read_from_cache,
-            write_to_cache=write_to_cache,
-            fetch_from_web=fetch_from_web,
-        )
-        for year in range(start.year, end.year + 1)
-    ]
 
-    # get raw data
-    ts = pd.concat(data).resample("D").mean()
+    data = []
+    for year in range(start.year, end.year + 1):
+        try:
+            data.append(
+                load_isd_daily_temp_data_cached_proxy(
+                    usaf_id,
+                    year,
+                    read_from_cache=read_from_cache,
+                    write_to_cache=write_to_cache,
+                    fetch_from_web=fetch_from_web,
+                )
+            )
+        except ISDDataNotAvailableError:
+            if error_on_missing_years:
+                raise
+            pywarnings.warn(
+                "eeweather: ISD data not available for {} in {}".format(usaf_id, year)
+            )
 
-    # whittle down
-    ts = ts[start:end]
+    if data:
+        # get raw data
+        ts = pd.concat(data).resample("D").mean()
 
-    if len(ts) > 0:
-        # because start and end dates need.to fall exactly on days
-        ts_start = datetime(start.year, start.month, start.day, tzinfo=pytz.UTC)
-        # add a day if not already exactly on a day, which guarantees
-        # that ts_start is greater than or equal to start.
-        if ts_start < start:
-            ts_start += timedelta(days=1)
-        ts_end = datetime(end.year, end.month, end.day, tzinfo=pytz.UTC)
-        # fill in gaps
-        ts = ts.reindex(pd.date_range(ts_start, ts_end, freq="D", tz=pytz.UTC))
+        # whittle down
+        ts = ts[start:end]
+    else:
+        ts = pd.Series([], dtype=float, index=pd.DatetimeIndex([], tz=pytz.UTC))
+
+    # because start and end dates need to fall exactly on days
+    ts_start = datetime(start.year, start.month, start.day, tzinfo=pytz.UTC)
+    # add a day if not already exactly on a day, which guarantees
+    # that ts_start is greater than or equal to start.
+    if ts_start < start:
+        ts_start += timedelta(days=1)
+    ts_end = datetime(end.year, end.month, end.day, tzinfo=pytz.UTC)
+
+    # fill in gaps, covering the full requested range even when no data loaded
+    ts = ts.reindex(pd.date_range(ts_start, ts_end, freq="D", tz=pytz.UTC))
+    for warning in _data_gap_warnings(ts):
+        pywarnings.warn("eeweather: {}".format(warning.description))
+
     return ts
 
 
 def load_gsod_daily_temp_data(
-    usaf_id, start, end, read_from_cache=True, write_to_cache=True, fetch_from_web=True
+    usaf_id,
+    start,
+    end,
+    read_from_cache=True,
+    write_to_cache=True,
+    error_on_missing_years=True,
+    fetch_from_web=True,
 ):
     # CalTRACK 2.3.3
     if start.tzinfo != pytz.UTC:
         raise NonUTCTimezoneInfoError(start)
     if end.tzinfo != pytz.UTC:
         raise NonUTCTimezoneInfoError(end)
-    data = [
-        load_gsod_daily_temp_data_cached_proxy(
-            usaf_id,
-            year,
-            read_from_cache=read_from_cache,
-            write_to_cache=write_to_cache,
-            fetch_from_web=fetch_from_web,
-        )
-        for year in range(start.year, end.year + 1)
-    ]
-    # get raw data
-    ts = pd.concat(data).resample("D").mean()
 
-    # whittle down
-    ts = ts[start:end]
+    data = []
+    for year in range(start.year, end.year + 1):
+        try:
+            data.append(
+                load_gsod_daily_temp_data_cached_proxy(
+                    usaf_id,
+                    year,
+                    read_from_cache=read_from_cache,
+                    write_to_cache=write_to_cache,
+                    fetch_from_web=fetch_from_web,
+                )
+            )
+        except GSODDataNotAvailableError:
+            if error_on_missing_years:
+                raise
+            pywarnings.warn(
+                "eeweather: GSOD data not available for {} in {}".format(usaf_id, year)
+            )
 
-    if len(ts) > 0:
-        # because start and end dates need.to fall exactly on days
-        ts_start = datetime(start.year, start.month, start.day, tzinfo=pytz.UTC)
-        # add a day if not already exactly on a day, which guarantees
-        # that ts_start is greater than or equal to start.
-        if ts_start < start:
-            ts_start += timedelta(days=1)
-        ts_end = datetime(end.year, end.month, end.day, tzinfo=pytz.UTC)
-        # fill in gaps
-        ts = ts.reindex(pd.date_range(ts_start, ts_end, freq="D", tz=pytz.UTC))
+    if data:
+        # get raw data
+        ts = pd.concat(data).resample("D").mean()
+
+        # whittle down
+        ts = ts[start:end]
+    else:
+        ts = pd.Series([], dtype=float, index=pd.DatetimeIndex([], tz=pytz.UTC))
+
+    # because start and end dates need to fall exactly on days
+    ts_start = datetime(start.year, start.month, start.day, tzinfo=pytz.UTC)
+    # add a day if not already exactly on a day, which guarantees
+    # that ts_start is greater than or equal to start.
+    if ts_start < start:
+        ts_start += timedelta(days=1)
+    ts_end = datetime(end.year, end.month, end.day, tzinfo=pytz.UTC)
+
+    # fill in gaps, covering the full requested range even when no data loaded
+    ts = ts.reindex(pd.date_range(ts_start, ts_end, freq="D", tz=pytz.UTC))
+    for warning in _data_gap_warnings(ts):
+        pywarnings.warn("eeweather: {}".format(warning.description))
+
     return ts
 
 
@@ -1509,7 +1623,13 @@ class ISDStation(object):
         )
 
     def load_isd_daily_temp_data(
-        self, start, end, read_from_cache=True, write_to_cache=True, fetch_from_web=True
+        self,
+        start,
+        end,
+        read_from_cache=True,
+        write_to_cache=True,
+        fetch_from_web=True,
+        error_on_missing_years=True,
     ):
         """Load resampled daily ISD temperature data from start date to end date (inclusive).
 
@@ -1524,9 +1644,12 @@ class ISDStation(object):
         read_from_cache : bool
             Whether or not to load data from cache.
         fetch_from_web : bool
-            Whether or not to fetch data from ftp.
+            Whether or not to fetch data from the web.
         write_to_cache : bool
             Whether or not to write newly loaded data to cache.
+        error_on_missing_years : bool
+            Whether to raise when data is unavailable for a year in the range,
+            or to warn and fill that year with NaN.
         """
         return load_isd_daily_temp_data(
             self.usaf_id,
@@ -1535,10 +1658,17 @@ class ISDStation(object):
             read_from_cache=read_from_cache,
             write_to_cache=write_to_cache,
             fetch_from_web=fetch_from_web,
+            error_on_missing_years=error_on_missing_years,
         )
 
     def load_gsod_daily_temp_data(
-        self, start, end, read_from_cache=True, write_to_cache=True, fetch_from_web=True
+        self,
+        start,
+        end,
+        read_from_cache=True,
+        write_to_cache=True,
+        fetch_from_web=True,
+        error_on_missing_years=True,
     ):
         """Load resampled daily GSOD temperature data from start date to end date (inclusive).
 
@@ -1555,7 +1685,10 @@ class ISDStation(object):
         write_to_cache : bool
             Whether or not to write newly loaded data to cache.
         fetch_from_web : bool
-            Whether or not to fetch data from ftp.
+            Whether or not to fetch data from the web.
+        error_on_missing_years : bool
+            Whether to raise when data is unavailable for a year in the range,
+            or to warn and fill that year with NaN.
         """
         return load_gsod_daily_temp_data(
             self.usaf_id,
@@ -1564,6 +1697,7 @@ class ISDStation(object):
             read_from_cache=read_from_cache,
             write_to_cache=write_to_cache,
             fetch_from_web=fetch_from_web,
+            error_on_missing_years=error_on_missing_years,
         )
 
     def load_tmy3_hourly_temp_data(

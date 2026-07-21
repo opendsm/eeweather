@@ -8,6 +8,24 @@ Development
 * Remove deprecated `typing` dependency
 * Switch from snapshottest to syrupy for snapshot testing.
 * Update internal database (2025-03-12).
+* Modernize packaging: pyproject.toml with hatchling replaces setup.py,
+  Pipfile, and MANIFEST.in; python >=3.10.
+* Add test workflow (python/os matrix) and tox environments for current
+  python versions.
+* Rewrite key-value cache on stdlib sqlite3; sqlalchemy is no longer used
+  or required. Cache urls must have the sqlite:/// form.
+* Replace retry and attrs dependencies with stdlib equivalents; fix
+  pkg_resources import broken on setuptools >=81.
+* Warn when loaded data is empty, truncated, or contains a multi-day
+  internal gap. Requests ending after a station's last available
+  observation previously returned NaN-padded series silently.
+* Fix crash (`No objects to concatenate`) when all years in a requested
+  range are missing and `error_on_missing_years=False`.
+* Loaders always return a series covering the full requested range.
+* Add `error_on_missing_years` to daily ISD/GSOD loaders; default is True
+  for all loaders, matching the ISDStation method default.
+* Tests run fully offline against captured NCEI access api payloads;
+  add coverage floor.
 
 0.3.29
 ------

@@ -24,17 +24,21 @@ import datetime
 import csv
 import io
 
-import attrs
+from dataclasses import dataclass
+
 import requests
-import retry
+
+
+
+API_REQUEST_TRIES = 3
 
 
 class DatasetType:
-    ISD = "IDS"
+    ISD = "ISD"
     GSOD = "GSOD"
 
 
-@attrs.define
+@dataclass
 class FileParseResult:
     """
     contains information about file that will be useful
@@ -95,9 +99,11 @@ class FileParseResult:
         usaf_id, wban_id, year = file_name_dash_split
         year = int(year)
 
-        return FileParseResult(
+        result = FileParseResult(
             dataset_type=dataset_type, usaf_id=usaf_id, wban_id=wban_id, year=year
         )
+
+        return result
 
 
 def _get_api_request_params(dataset_type: str, usaf_id: str, wban_id: str, year: int):
@@ -123,13 +129,15 @@ def _get_api_request_params(dataset_type: str, usaf_id: str, wban_id: str, year:
     return params
 
 
-@retry.retry(tries=3)
 def make_api_request(
     dataset_type: str, usaf_id: str, wban_id: str, year: int
 ) -> list[tuple[datetime.datetime, float]]:
     """
     makes api request to the access api when given the necessary information about
     the weather station to fetch data for.
+
+    the request is retried on connection and http errors, as the api has been
+    shown to intermittently fail.
 
     returns a list of tuples where the first element is the datetime and the second
     is the temperature that the datetime refers to
@@ -138,11 +146,17 @@ def make_api_request(
         dataset_type=dataset_type, usaf_id=usaf_id, wban_id=wban_id, year=year
     )
 
-    resp = requests.get(
-        url="https://www.ncei.noaa.gov/access/services/data/v1", params=params
-    )
-
-    resp.raise_for_status()
+    for attempt in range(API_REQUEST_TRIES):
+        try:
+            resp = requests.get(
+                url="https://www.ncei.noaa.gov/access/services/data/v1", params=params
+            )
+            resp.raise_for_status()
+        except requests.RequestException:
+            if attempt == API_REQUEST_TRIES - 1:
+                raise
+        else:
+            break
 
     csv_data = io.StringIO(resp.text)
     dict_reader = csv.DictReader(csv_data)

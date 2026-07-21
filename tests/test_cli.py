@@ -30,10 +30,11 @@ from eeweather.cli import (
 )
 
 
+
 def test_eeweather_cli():
     runner = CliRunner()
 
-    result = runner.invoke(cli)
+    result = runner.invoke(cli, ["--help"])
     assert result.exit_code == 0
     assert len(result.output) > 100
 
