@@ -458,21 +458,28 @@ GHCN_INVENTORY_MONTH_COLUMNS = (
 )
 
 
+QUALITY_WINDOW_YEARS = 5
+
+# every month of the rating window above these observation counts
+HIGH_MONTHLY_OBSERVATIONS = 600
+MEDIUM_MONTHLY_OBSERVATIONS = 360
+
+
 def _quality_rating_window(start, end):
     """Calendar years rating a request: five years ending two years after
     the request's last date, sliding back to end no later than the last
     full year."""
     last_full_year = datetime.now().year - 1
     window_end = min(end.year + 2, last_full_year)
-    window_start = window_end - 4
+    window_start = window_end - (QUALITY_WINDOW_YEARS - 1)
 
     return window_start, window_end
 
 
 def _quality_from_minimum(minimum):
-    if minimum > 24 * 25:
+    if minimum > HIGH_MONTHLY_OBSERVATIONS:
         return "high"
-    elif minimum > 24 * 15:
+    elif minimum > MEDIUM_MONTHLY_OBSERVATIONS:
         return "medium"
 
     return "low"
@@ -542,8 +549,8 @@ def get_station_qualities(start, end):
     observed_min = observed_min.where(year_counts >= n_years, 0)
 
     qualities = pd.Series("low", index=observed_min.index)
-    qualities[observed_min > 24 * 15] = "medium"
-    qualities[observed_min > 24 * 25] = "high"
+    qualities[observed_min > MEDIUM_MONTHLY_OBSERVATIONS] = "medium"
+    qualities[observed_min > HIGH_MONTHLY_OBSERVATIONS] = "high"
 
     return qualities
 

@@ -30,6 +30,8 @@ import pandas as pd
 import numpy as np
 
 from .connections import metadata_db_connection_proxy
+from .stations import QUALITY_WINDOW_YEARS, _quality_from_minimum
+
 
 
 logger = logging.getLogger(__name__)
@@ -304,7 +306,7 @@ def _compute_station_quality_from_ghcnh(
     if end_year is None:
         end_year = datetime.now().year - 1  # last full year
     if years_back is None:
-        years_back = 5
+        years_back = QUALITY_WINDOW_YEARS
 
     year_range = set(range(end_year - (years_back - 1), end_year + 1))
     window = inventory[inventory.YEAR.isin(year_range)]
@@ -315,12 +317,8 @@ def _compute_station_quality_from_ghcnh(
         if group is None or set(group.YEAR) != year_range:
             return "low"
         minimum = group.groupby("YEAR")[GHCNH_INVENTORY_MONTHS].sum().to_numpy().min()
-        if minimum > 24 * 25:
-            return "high"
-        elif minimum > 24 * 15:
-            return "medium"
 
-        return "low"
+        return _quality_from_minimum(minimum)
 
     for usaf_id, metadata in isd_station_metadata.items():
         metadata["quality"] = quality(metadata["ghcn_id"])
