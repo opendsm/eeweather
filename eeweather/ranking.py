@@ -22,10 +22,10 @@ import numpy as np
 import pyproj
 
 import eeweather.mockable
-from .exceptions import ISDDataNotAvailableError
+from .exceptions import DataNotAvailableError
 from .connections import metadata_db_connection_proxy
 from .geo import get_lat_long_climate_zones
-from .stations import ISDStation
+from .stations import WeatherStation, get_station_qualities
 from .utils import lazy_property
 from .warnings import EEWeatherWarning
 
@@ -115,6 +115,7 @@ def rank_stations(
     match_ca_climate_zone=False,
     match_state=False,
     minimum_quality=None,
+    rating_period=None,
     minimum_tmy3_class=None,
     max_distance_meters=None,
     max_difference_elevation_meters=None,
@@ -153,6 +154,13 @@ def rank_stations(
         If ``True``, filter candidate weather stations to those
         matching the US state of the target site, as specified by
         ``site_state=True``.
+    rating_period : tuple of (datetime.datetime, datetime.datetime), optional
+        When given, station quality is rated from GHCNh monthly
+        observation counts over the five calendar years ending two years
+        after the period's last date (sliding back to end no later than
+        the last full year), and the ``rough_quality`` column and
+        ``minimum_quality`` filter use that rating. When None, the rating
+        covers the last five full years.
     minimum_quality : str, ``'high'``, ``'medium'``, ``'low'``
         If given, filter candidate weather stations to those meeting or
         exceeding the given quality, as summarized by the frequency and
@@ -187,7 +195,7 @@ def rank_stations(
         - ``iecc_moisture_regime``: IECC Moisture Regime ID (A-C)
         - ``ba_climate_zone``: Building America climate zone name
         - ``ca_climate_zone``: Califoria climate zone number
-        - ``rough_quality``: Approximate measure of frequency of ISD
+        - ``rough_quality``: Approximate measure of frequency of GHCNh
           observations data at weather station.
         - ``elevation``: Elevation of weather station site, if available.
         - ``state``: US state of weather station site, if applicable.
@@ -268,6 +276,13 @@ def rank_stations(
         filters.append(candidates.is_tmy3.isin([is_tmy3]))
     if is_cz2010 is not None:
         filters.append(candidates.is_cz2010.isin([is_cz2010]))
+
+    if rating_period is not None:
+        start, end = rating_period
+        period_qualities = get_station_qualities(start, end)
+        candidates["rough_quality"] = period_qualities.reindex(
+            candidates.index, fill_value="low"
+        )
 
     if minimum_quality == "low":
         filters.append(candidates.rough_quality.isin(["high", "medium", "low"]))
@@ -351,12 +366,15 @@ def combine_ranked_stations(rankings):
 
 
 @eeweather.mockable.mockable()
-def load_isd_hourly_temp_data(
+def load_hourly_temp_data(
     station, start_date, end_date, fetch_from_web
 ):  # pragma: no cover
-    return station.load_isd_hourly_temp_data(
-        start_date, end_date, fetch_from_web=fetch_from_web
+    df, warnings = station.load_data(
+        start_date, end_date, fetch_from_web=fetch_from_web,
+        error_on_missing_years=False,
     )
+
+    return df["temperature"], warnings
 
 
 def select_station(
@@ -379,7 +397,7 @@ def select_station(
 
     Returns
     -------
-    isd_station, warnings : tuple of (:any:`eeweather.ISDStation`, list of str)
+    station, warnings : tuple of (:any:`eeweather.WeatherStation`, list of str)
         A qualified weather station. ``None`` if no station meets criteria.
     """
 
@@ -389,10 +407,10 @@ def select_station(
         else:
             start_date, end_date = coverage_range
             try:
-                tempC, warnings = eeweather.mockable.load_isd_hourly_temp_data(
+                tempC, warnings = eeweather.mockable.load_hourly_temp_data(
                     station, start_date, end_date, fetch_from_web
                 )
-            except ISDDataNotAvailableError:
+            except DataNotAvailableError:
                 return False, []  # reject
 
             # TODO(philngo): also need to incorporate within-day limits
@@ -422,7 +440,7 @@ def select_station(
 
     n_stations_passed = 0
     for usaf_id, row in candidates.iterrows():
-        station = ISDStation(usaf_id)
+        station = WeatherStation(usaf_id)
         test_result, warnings = _test_station(station)
         if test_result:
             n_stations_passed += 1

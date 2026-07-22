@@ -9,29 +9,12 @@ services:
     volumes:
       - .:/app
 
-  docs:
-    image: eeweather_shell
-    ports:
-      - "${HOST_PORT_DOCS:-8000}:8000"
-    entrypoint: make -C docs livehtml
-    volumes:
-      - .:/app
-
   test:
     image: eeweather_shell
     entrypoint: py.test -n0
     volumes:
       - .:/app
       - /app/tests/__pycache__/
-
-  jupyter:
-    ports:
-      - "${HOST_PORT_JUPYTER:-8888}:${HOST_PORT_JUPYTER:-8888}"
-    image: eeweather_shell
-    entrypoint: |
-      jupyter lab scripts/ --ip=0.0.0.0 --port=${HOST_PORT_JUPYTER:-8888} --allow-root --no-browser
-    volumes:
-      - .:/app
 
   eeweather:
     image: eeweather_shell

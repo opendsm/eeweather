@@ -49,6 +49,7 @@ def test_database_tables():
         "ca_climate_zone_metadata",
         "tmy3_station_metadata",
         "cz2010_station_metadata",
+        "ghcn_inventory",
     ]
 
 

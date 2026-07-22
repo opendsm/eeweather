@@ -25,8 +25,6 @@ from eeweather.cli import (
     cli,
     inspect_isd_station,
     inspect_isd_file_years,
-    inspect_isd_filenames,
-    inspect_gsod_filenames,
 )
 
 
@@ -54,6 +52,10 @@ def test_inspect_isd_station():
         "latitude": "+34.200",
         "longitude": "-118.365",
         "name": "BURBANK-GLENDALE-PASA ARPT",
+        "ghcn_id": "USW00023152",
+        "ghcn_map_method": "icao",
+        "ghcn_first_year": 1943,
+        "ghcn_last_year": 2026,
         "quality": "high",
         "recent_wban_id": "23152",
         "state": "CA",
@@ -100,36 +102,4 @@ def test_inspect_isd_file_years():
 def test_inspect_isd_file_years_unrecognized():
     runner = CliRunner()
     result = runner.invoke(inspect_isd_file_years, ["INVALID"])
-    assert result.exit_code == 1
-
-
-def test_inspect_isd_filenames():
-    runner = CliRunner()
-
-    result = runner.invoke(inspect_isd_filenames, ["722880", "2017"])
-    assert result.exit_code == 0
-    assert result.output == (
-        "ftp://ftp.ncei.noaa.gov/pub/data/noaa/2017/722880-23152-2017.gz\n"
-    )
-
-
-def test_inspect_isd_filenames_unrecognized():
-    runner = CliRunner()
-    result = runner.invoke(inspect_isd_filenames, ["INVALID", "2017"])
-    assert result.exit_code == 1
-
-
-def test_inspect_gsod_filenames():
-    runner = CliRunner()
-
-    result = runner.invoke(inspect_gsod_filenames, ["722880", "2017"])
-    assert result.exit_code == 0
-    assert result.output == (
-        "ftp://ftp.ncei.noaa.gov/pub/data/gsod/2017/722880-23152-2017.op.gz\n"
-    )
-
-
-def test_inspect_gsod_filenames_unrecognized():
-    runner = CliRunner()
-    result = runner.invoke(inspect_gsod_filenames, ["INVALID", "2017"])
     assert result.exit_code == 1

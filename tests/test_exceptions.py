@@ -23,8 +23,7 @@ from eeweather import (
     EEWeatherError,
     UnrecognizedUSAFIDError,
     UnrecognizedZCTAError,
-    ISDDataNotAvailableError,
-    GSODDataNotAvailableError,
+    DataNotAvailableError,
 )
 
 
@@ -53,21 +52,11 @@ def test_unrecognized_zcta_error():
     )
 
 
-def test_isd_data_does_not_exist_error():
-    with pytest.raises(ISDDataNotAvailableError) as excinfo:
-        raise ISDDataNotAvailableError("123456", 1800)
+def test_data_does_not_exist_error():
+    with pytest.raises(DataNotAvailableError) as excinfo:
+        raise DataNotAvailableError("123456", 1800)
     assert excinfo.value.usaf_id == "123456"
     assert excinfo.value.year == 1800
     assert excinfo.value.message == (
-        'ISD data does not exist for station "123456" in year 1800.'
-    )
-
-
-def test_gsod_data_does_not_exist_error():
-    with pytest.raises(GSODDataNotAvailableError) as excinfo:
-        raise GSODDataNotAvailableError("123456", 1800)
-    assert excinfo.value.usaf_id == "123456"
-    assert excinfo.value.year == 1800
-    assert excinfo.value.message == (
-        'GSOD data does not exist for station "123456" in year 1800.'
+        'Data does not exist for station "123456" in year 1800.'
     )

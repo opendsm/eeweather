@@ -23,7 +23,7 @@ import pytest
 import pytz
 
 from eeweather import rank_stations, combine_ranked_stations, select_station
-from eeweather.exceptions import ISDDataNotAvailableError
+from eeweather.exceptions import DataNotAvailableError
 
 
 @pytest.fixture
@@ -58,8 +58,9 @@ def test_rank_stations_no_filter(lat_long_fresno, snapshot):
         "difference_elevation_meters",
     ]
     assert round(df.distance_meters.iloc[0]) == 2723
-    assert round(df.distance_meters.iloc[-10]) == 16565963.0
-    assert pd.isnull(df.distance_meters.iloc[-1]) is True
+    assert round(df.distance_meters.iloc[-10]) == 15057891
+    # every station in the registry has coordinates, so every distance is real
+    assert pd.notnull(df.distance_meters.iloc[-1])
 
 
 def test_rank_stations_match_climate_zones_not_null(lat_long_fresno, snapshot):
@@ -214,15 +215,14 @@ def test_combine_ranked_stations(cz_candidates, naive_candidates):
     assert list(cz_candidates.index) == [
         "723890",
         "747020",
-        "723895",
         "723840",
     ]
     assert list(naive_candidates.index) == [
         "723890",
         "747020",
         "724815",
-        "723895",
         "723965",
+        "724926",
     ]
 
     combined_candidates = combine_ranked_stations([cz_candidates, naive_candidates])
@@ -233,10 +233,10 @@ def test_combine_ranked_stations(cz_candidates, naive_candidates):
     assert list(combined_candidates.index) == [
         "723890",
         "747020",
-        "723895",
         "723840",
         "724815",
         "723965",
+        "724926",
     ]
 
 
@@ -246,8 +246,8 @@ def test_select_station_no_coverage_check(cz_candidates):
 
 
 @pytest.fixture
-def monkeypatch_load_isd_hourly_temp_data(monkeypatch):
-    def load_isd_hourly_temp_data(station, start, end, fetch_from_web=True):
+def monkeypatch_load_hourly_temp_data(monkeypatch):
+    def load_hourly_temp_data(station, start, end, fetch_from_web=True):
         # because result datetimes should fall exactly on hours
         normalized_start = datetime(
             start.year, start.month, start.day, start.hour, tzinfo=pytz.UTC
@@ -263,11 +263,11 @@ def monkeypatch_load_isd_hourly_temp_data(monkeypatch):
         return pd.Series(1, index=index)[: -24 * 10].reindex(index), []
 
     monkeypatch.setattr(
-        "eeweather.mockable.load_isd_hourly_temp_data", load_isd_hourly_temp_data
+        "eeweather.mockable.load_hourly_temp_data", load_hourly_temp_data
     )
 
 
-def test_select_station_full_data(cz_candidates, monkeypatch_load_isd_hourly_temp_data):
+def test_select_station_full_data(cz_candidates, monkeypatch_load_hourly_temp_data):
     start = datetime(2017, 1, 1, tzinfo=pytz.UTC)
     end = datetime(2018, 1, 1, tzinfo=pytz.UTC)
 
@@ -289,11 +289,11 @@ def test_select_station_full_data(cz_candidates, monkeypatch_load_isd_hourly_tem
 
 
 @pytest.fixture
-def monkeypatch_load_isd_hourly_temp_data_with_error(monkeypatch):
-    def load_isd_hourly_temp_data(station, start, end, fetch_from_web=True):
+def monkeypatch_load_hourly_temp_data_with_error(monkeypatch):
+    def load_hourly_temp_data(station, start, end, fetch_from_web=True):
         index = pd.date_range(start, end, freq="h", tz="UTC")
         if station.usaf_id == "723890":
-            raise ISDDataNotAvailableError(
+            raise DataNotAvailableError(
                 "723890", start.year
             )  # first choice not available
         elif station.usaf_id == "747020":
@@ -306,12 +306,12 @@ def monkeypatch_load_isd_hourly_temp_data_with_error(monkeypatch):
             )
 
     monkeypatch.setattr(
-        "eeweather.mockable.load_isd_hourly_temp_data", load_isd_hourly_temp_data
+        "eeweather.mockable.load_hourly_temp_data", load_hourly_temp_data
     )
 
 
 def test_select_station_with_isd_data_not_available_error(
-    cz_candidates, monkeypatch_load_isd_hourly_temp_data_with_error
+    cz_candidates, monkeypatch_load_hourly_temp_data_with_error
 ):
     start = datetime(2017, 1, 1, tzinfo=pytz.UTC)
     end = datetime(2018, 1, 1, tzinfo=pytz.UTC)
@@ -324,8 +324,8 @@ def test_select_station_with_isd_data_not_available_error(
 
 
 @pytest.fixture
-def monkeypatch_load_isd_hourly_temp_data_with_empty(monkeypatch):
-    def load_isd_hourly_temp_data(station, start, end, fetch_from_web=True):
+def monkeypatch_load_hourly_temp_data_with_empty(monkeypatch):
+    def load_hourly_temp_data(station, start, end, fetch_from_web=True):
         index = pd.date_range(start, end, freq="h", tz="UTC")
         if station.usaf_id == "723890":
             return pd.Series(1, index=index)[:0], []
@@ -339,12 +339,12 @@ def monkeypatch_load_isd_hourly_temp_data_with_empty(monkeypatch):
             )
 
     monkeypatch.setattr(
-        "eeweather.mockable.load_isd_hourly_temp_data", load_isd_hourly_temp_data
+        "eeweather.mockable.load_hourly_temp_data", load_hourly_temp_data
     )
 
 
 def test_select_station_with_empty_tempC(
-    cz_candidates, monkeypatch_load_isd_hourly_temp_data_with_empty, snapshot
+    cz_candidates, monkeypatch_load_hourly_temp_data_with_empty, snapshot
 ):
     start = datetime(2017, 1, 1, tzinfo=pytz.UTC)
     end = datetime(2018, 1, 1, tzinfo=pytz.UTC)
@@ -375,7 +375,7 @@ def test_select_station_no_station_warnings_check():
 
 
 def test_select_station_with_second_level_dates(
-    cz_candidates, monkeypatch_load_isd_hourly_temp_data, snapshot
+    cz_candidates, monkeypatch_load_hourly_temp_data, snapshot
 ):
     # dates don't fall exactly on the hour
     start = datetime(2017, 1, 1, 2, 3, 4, tzinfo=pytz.UTC)
@@ -383,3 +383,24 @@ def test_select_station_with_second_level_dates(
 
     station, warnings = select_station(cz_candidates, coverage_range=(start, end))
     assert station.usaf_id == snapshot
+
+
+def test_rank_stations_rating_period_uses_era_quality(lat_long_fresno):
+    lat, lng = lat_long_fresno
+    start = datetime(2010, 1, 1, tzinfo=pytz.UTC)
+    end = datetime(2014, 12, 31, tzinfo=pytz.UTC)
+
+    df = rank_stations(
+        lat, lng, minimum_quality="high", is_tmy3=True, is_cz2010=True,
+        rating_period=(start, end),
+    )
+
+    # 723895 and 723896 rate high in their active era despite being
+    # medium or low today
+    assert list(df.head().index) == [
+        "723890",
+        "747020",
+        "723896",
+        "724815",
+        "723895",
+    ]

@@ -4,6 +4,37 @@ Changelog
 Development
 -----------
 
+* Observed weather data is served from NOAA GHCNh; ISD and GSOD stopped
+  receiving data 2025-08-27. Overlap validation against ISD history shows
+  median hourly deviation of 0.0001 degrees C
+  (`scripts/validate_ghcnh_against_isd.py`).
+* New api: `load_data(usaf_id, start, end, frequency, variables)` returns a
+  DataFrame and warnings, replacing the `load_isd_*`/`load_gsod_*` family;
+  `ISDStation` is renamed `WeatherStation`. GHCNh variables beyond
+  temperature (dew point, relative humidity, wind speed, ...) are available
+  through `variables`.
+* Station registry maps each station to its GHCNh id
+  (`get_ghcn_id(usaf_id)` for one station, `get_ghcn_ids()` for the
+  registry); 349 stations with no
+  GHCNh counterpart are removed. Each station records the first and last
+  year its GHCNh record has observations (`ghcn_first_year`,
+  `ghcn_last_year`); about a fifth of the registry, nearly all low
+  quality, has no observations after 2023.
+* Station quality ratings are computed from the GHCNh inventory (same
+  rule as before: every month of the last five full years above 600
+  observations is high, above 360 is medium). Tiers move for about a
+  fifth of stations, mostly upgrades of stations the retired ISD
+  inventory undercounted: 1858 high / 393 medium / 2246 low.
+* Quality can be rated for the period being requested:
+  `get_station_quality(usaf_id, start, end)` and
+  `rank_stations(..., rating_period=(start, end))` rate stations over
+  the five calendar years ending two years after the period's last
+  date (sliding back to end no later than the last full year), so
+  historical requests rank stations by their reliability in that era.
+  The packaged database carries the monthly counts (`ghcn_inventory`).
+* Caching uses new ghcnh-* keys; ISD-era cache entries are never served.
+* Deleted: FTP fetch code, ISD/GSOD parsing, filename helpers and CLI
+  commands, sphinx docs (documentation moves to opendsm.energy).
 * Switched to https api over FTP for temperature data fetching
 * Remove deprecated `typing` dependency
 * Switch from snapshottest to syrupy for snapshot testing.

@@ -7,26 +7,30 @@
   })
 # ---
 # name: test_isd_file_metadata_table_count
-  48113
+  47646
 # ---
 # name: test_isd_station_metadata_table_content
   dict({
-    'ba_climate_zone': 'Very Cold',
+    'ba_climate_zone': 'Hot-Humid',
     'ca_climate_zone': None,
-    'elevation': '+0032.5',
-    'icao_code': 'PATO',
-    'iecc_climate_zone': '7',
-    'iecc_moisture_regime': None,
-    'latitude': '+60.784',
-    'longitude': '-148.848',
-    'name': 'PORTAGE GLACIER',
+    'elevation': '+0003.0',
+    'ghcn_first_year': 1955,
+    'ghcn_id': 'USW00003852',
+    'ghcn_last_year': 2026,
+    'ghcn_map_method': 'latlon',
+    'icao_code': None,
+    'iecc_climate_zone': '2',
+    'iecc_moisture_regime': 'A',
+    'latitude': '+30.433',
+    'longitude': '-086.717',
+    'name': 'HURLBURT FLD/EXERCIS',
     'quality': 'high',
-    'recent_wban_id': '26492',
-    'state': 'AK',
-    'usaf_id': '700001',
-    'wban_ids': '26492,99999',
+    'recent_wban_id': '99999',
+    'state': 'FL',
+    'usaf_id': '690090',
+    'wban_ids': '99999',
   })
 # ---
 # name: test_isd_station_metadata_table_count
-  4845
+  4497
 # ---

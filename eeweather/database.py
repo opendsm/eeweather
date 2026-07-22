@@ -29,7 +29,9 @@ import tempfile
 import pandas as pd
 import numpy as np
 
-from .connections import noaa_ftp_connection_proxy, metadata_db_connection_proxy
+from .connections import metadata_db_connection_proxy
+from .stations import QUALITY_WINDOW_YEARS, _quality_from_minimum
+
 
 
 logger = logging.getLogger(__name__)
@@ -205,7 +207,182 @@ def _load_isd_station_metadata(download_path):
             "state": recent.STATE,
         }
 
+    for usaf_id, (lat, lon) in ISD_COORDINATE_CORRECTIONS.items():
+        if usaf_id in metadata:
+            metadata[usaf_id]["latitude"] = lat
+            metadata[usaf_id]["longitude"] = lon
+            metadata[usaf_id]["point"] = Point(float(lon), float(lat))
+
     return metadata
+
+
+# Corrections to known-bad coordinates in the upstream isd-history registry,
+# verified against the physical site location and the GHCNh station list.
+ISD_COORDINATE_CORRECTIONS = {
+    # Ann Arbor Municipal (KARB): isd-history longitude is off by 4 degrees
+    "725374": ("+42.223", "-083.740"),
+}
+
+
+GHCN_MATCH_SANITY_KM = 50.0
+GHCN_NEAREST_NEIGHBOR_KM = 5.0
+
+
+def _haversine_km(lat1, lon1, lat2, lon2):
+    earth_radius_km = 6371.0
+    p1, p2 = np.radians(lat1), np.radians(lat2)
+    dp, dl = np.radians(lat2 - lat1), np.radians(lon2 - lon1)
+    a = np.sin(dp / 2) ** 2 + np.cos(p1) * np.cos(p2) * np.sin(dl / 2) ** 2
+
+    return 2 * earth_radius_km * np.arcsin(np.sqrt(a))
+
+
+GHCNH_INVENTORY_MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+                          "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
+
+
+def _load_ghcnh_inventory(download_path):
+    """Monthly observation counts per GHCNh station and year."""
+    inventory = pd.read_csv(
+        os.path.join(download_path, "ghcnh-inventory.txt"), sep=r"\s+"
+    )
+
+    return inventory
+
+
+def _ghcn_data_years(inventory):
+    """First and last year with observations per GHCNh station."""
+    with_data = inventory[inventory[GHCNH_INVENTORY_MONTHS].sum(axis=1) > 0]
+    years = with_data.groupby("GHCNh_ID").YEAR.agg(["min", "max"])
+
+    return {gid: (int(row["min"]), int(row["max"])) for gid, row in years.iterrows()}
+
+
+def _load_registry_ghcn_inventory(isd_station_metadata, inventory):
+    """Monthly observation counts per registry station and year."""
+    ghcn_to_usaf = {}
+    for usaf_id, metadata in isd_station_metadata.items():
+        ghcn_to_usaf.setdefault(metadata["ghcn_id"], []).append(usaf_id)
+
+    rows = []
+    for record in inventory.itertuples(index=False):
+        for usaf_id in ghcn_to_usaf.get(record.GHCNh_ID, ()):
+            rows.append(
+                (usaf_id, int(record.YEAR))
+                + tuple(int(getattr(record, month)) for month in GHCNH_INVENTORY_MONTHS)
+            )
+
+    return rows
+
+
+def _write_ghcn_inventory_table(conn, ghcn_inventory):
+    cur = conn.cursor()
+    cur.executemany(
+        """
+      insert into ghcn_inventory(
+        usaf_id, year, jan, feb, mar, apr, may, jun, jul, aug, sep, oct, nov, dec
+      ) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    """,
+        ghcn_inventory,
+    )
+    cur.execute(
+        """
+      create index ghcn_inventory_usaf_id_year on ghcn_inventory(usaf_id, year)
+    """
+    )
+    cur.close()
+    conn.commit()
+
+
+def _compute_station_quality_from_ghcnh(
+    isd_station_metadata, inventory, end_year=None, years_back=None
+):
+    """Rate each station by its GHCNh observation counts.
+
+    A station is high quality when every month of the last years_back
+    full years has more than 600 observations, medium above 360, low
+    otherwise or when any year is absent.
+    """
+    if end_year is None:
+        end_year = datetime.now().year - 1  # last full year
+    if years_back is None:
+        years_back = QUALITY_WINDOW_YEARS
+
+    year_range = set(range(end_year - (years_back - 1), end_year + 1))
+    window = inventory[inventory.YEAR.isin(year_range)]
+    grouped = {gid: group for gid, group in window.groupby("GHCNh_ID")}
+
+    def quality(ghcn_id):
+        group = grouped.get(ghcn_id)
+        if group is None or set(group.YEAR) != year_range:
+            return "low"
+        minimum = group.groupby("YEAR")[GHCNH_INVENTORY_MONTHS].sum().to_numpy().min()
+
+        return _quality_from_minimum(minimum)
+
+    for usaf_id, metadata in isd_station_metadata.items():
+        metadata["quality"] = quality(metadata["ghcn_id"])
+
+
+def _map_isd_stations_to_ghcn(isd_station_metadata, download_path):
+    """Assign each station its GHCNh id; stations without one are removed.
+
+    Match priority: shared ICAO code (nearest candidate, within
+    GHCN_MATCH_SANITY_KM), GHCNh id following the USW000{wban} pattern
+    (within GHCN_MATCH_SANITY_KM), then nearest GHCNh station within
+    GHCN_NEAREST_NEIGHBOR_KM. Each mapped station records the first and
+    last year its GHCNh record has observations.
+    """
+    ghcn = pd.read_csv(
+        os.path.join(download_path, "ghcnh-station-list.csv"), dtype=str
+    )
+    ghcn["lat"] = pd.to_numeric(ghcn.LATITUDE, errors="coerce")
+    ghcn["lon"] = pd.to_numeric(ghcn.LONGITUDE, errors="coerce")
+    ghcn = ghcn.dropna(subset=["lat", "lon"]).reset_index(drop=True)
+    ghcn_by_id = ghcn.set_index("GHCN_ID", drop=False)
+    data_years = _ghcn_data_years(_load_ghcnh_inventory(download_path))
+    ghcn_by_icao = {icao: group for icao, group in ghcn.dropna(subset=["ICAO"]).groupby("ICAO")}
+
+    unmapped = []
+    for usaf_id, metadata in isd_station_metadata.items():
+        lat = pd.to_numeric(metadata["latitude"], errors="coerce")
+        lon = pd.to_numeric(metadata["longitude"], errors="coerce")
+        ghcn_id, method = None, None
+
+        if not pd.isna(lat):
+            icao_candidates = ghcn_by_icao.get(metadata["icao_code"])
+            if icao_candidates is not None:
+                d = _haversine_km(lat, lon, icao_candidates.lat.values, icao_candidates.lon.values)
+                i = int(np.argmin(d))
+                if d[i] <= GHCN_MATCH_SANITY_KM:
+                    ghcn_id, method = icao_candidates.GHCN_ID.values[i], "icao"
+
+            if ghcn_id is None:
+                wban_guess = "USW000" + str(metadata["recent_wban_id"]).zfill(5)
+                if wban_guess in ghcn_by_id.index:
+                    row = ghcn_by_id.loc[wban_guess]
+                    if _haversine_km(lat, lon, row.lat, row.lon) <= GHCN_MATCH_SANITY_KM:
+                        ghcn_id, method = wban_guess, "wban"
+
+            if ghcn_id is None:
+                d = _haversine_km(lat, lon, ghcn.lat.values, ghcn.lon.values)
+                i = int(np.argmin(d))
+                if d[i] <= GHCN_NEAREST_NEIGHBOR_KM:
+                    ghcn_id, method = ghcn.GHCN_ID.values[i], "latlon"
+
+        if ghcn_id is None:
+            unmapped.append(usaf_id)
+        else:
+            metadata["ghcn_id"] = ghcn_id
+            metadata["ghcn_map_method"] = method
+            first_year, last_year = data_years.get(ghcn_id, (None, None))
+            metadata["ghcn_first_year"] = first_year
+            metadata["ghcn_last_year"] = last_year
+
+    for usaf_id in unmapped:
+        del isd_station_metadata[usaf_id]
+
+    print("Removed {} stations with no GHCNh counterpart".format(len(unmapped)))
 
 
 def _load_isd_file_metadata(download_path, isd_station_metadata):
@@ -247,49 +424,6 @@ def _load_isd_file_metadata(download_path, isd_station_metadata):
             for i, row in group.iterrows()
         ]
     return metadata
-
-
-def _compute_isd_station_quality(
-    isd_station_metadata,
-    isd_file_metadata,
-    end_year=None,
-    years_back=None,
-    quality_func=None,
-):
-    if end_year is None:
-        end_year = datetime.now().year - 1  # last full year
-
-    if years_back is None:
-        years_back = 5
-
-    if quality_func is None:
-
-        def quality_func(values):
-            minimum = values.min()
-            if minimum > 24 * 25:
-                return "high"
-            elif minimum > 24 * 15:
-                return "medium"
-            else:
-                return "low"
-
-    # e.g., if end_year == 2017, year_range = ["2013", "2014", ..., "2017"]
-    year_range = set([str(y) for y in range(end_year - (years_back - 1), end_year + 1)])
-
-    def _compute_station_quality(usaf_id):
-        years_data = isd_file_metadata.get(usaf_id, {}).get("years", {})
-        if not all([year in years_data for year in year_range]):
-            return quality_func(np.repeat(0, 60))
-        counts = defaultdict(lambda: 0)
-        for y, year in enumerate(year_range):
-            for station in years_data[year]:
-                for m, month_counts in enumerate(station["counts"]):
-                    counts[y * 12 + m] += int(month_counts)
-        return quality_func(np.array(list(counts.values())))
-
-    # figure out counts for years of interest
-    for usaf_id, metadata in isd_station_metadata.items():
-        metadata["quality"] = _compute_station_quality(usaf_id)
 
 
 def _load_zcta_metadata(download_path):
@@ -673,6 +807,10 @@ def _create_table_structures(conn):
         , longitude text
         , elevation text
         , state text
+        , ghcn_id text not null
+        , ghcn_map_method text not null
+        , ghcn_first_year integer
+        , ghcn_last_year integer
         , quality text default 'low'
         , iecc_climate_zone text
         , iecc_moisture_regime text
@@ -764,6 +902,27 @@ def _create_table_structures(conn):
     """
     )
 
+    cur.execute(
+        """
+      create table ghcn_inventory (
+        usaf_id text not null
+        , year integer not null
+        , jan integer not null
+        , feb integer not null
+        , mar integer not null
+        , apr integer not null
+        , may integer not null
+        , jun integer not null
+        , jul integer not null
+        , aug integer not null
+        , sep integer not null
+        , oct integer not null
+        , nov integer not null
+        , dec integer not null
+      )
+    """
+    )
+
 
 def _write_isd_station_metadata_table(conn, isd_station_metadata):
     cur = conn.cursor()
@@ -779,6 +938,10 @@ def _write_isd_station_metadata_table(conn, isd_station_metadata):
             metadata["longitude"],
             metadata["elevation"],
             metadata["state"],
+            metadata["ghcn_id"],
+            metadata["ghcn_map_method"],
+            metadata["ghcn_first_year"],
+            metadata["ghcn_last_year"],
             metadata["quality"],
             metadata["iecc_climate_zone"],
             metadata["iecc_moisture_regime"],
@@ -799,12 +962,16 @@ def _write_isd_station_metadata_table(conn, isd_station_metadata):
         , longitude
         , elevation
         , state
+        , ghcn_id
+        , ghcn_map_method
+        , ghcn_first_year
+        , ghcn_last_year
         , quality
         , iecc_climate_zone
         , iecc_moisture_regime
         , ba_climate_zone
         , ca_climate_zone
-      ) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      ) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """,
         rows,
     )
@@ -1201,6 +1368,9 @@ def build_metadata_db(
     print("Loading ISD station metadata")
     isd_station_metadata = _load_isd_station_metadata(download_path)
 
+    print("Mapping ISD stations to GHCNh ids")
+    _map_isd_stations_to_ghcn(isd_station_metadata, download_path)
+
     print("Loading ISD station file metadata")
     isd_file_metadata = _load_isd_file_metadata(download_path, isd_station_metadata)
 
@@ -1211,10 +1381,17 @@ def build_metadata_db(
     cz2010_station_metadata = _load_cz2010_station_metadata()
 
     # Augment data in memory
-    print("Computing ISD station quality")
-    # add rough station quality to station metadata
-    # (all months in last 5 years have at least 600 points)
-    _compute_isd_station_quality(isd_station_metadata, isd_file_metadata)
+    print("Loading GHCNh inventory for registry stations")
+    ghcn_inventory = _load_registry_ghcn_inventory(
+        isd_station_metadata, _load_ghcnh_inventory(download_path)
+    )
+
+    print("Computing station quality from the GHCNh inventory")
+    # rough station quality: all months in the last 5 full years have
+    # more than 600 observations
+    _compute_station_quality_from_ghcnh(
+        isd_station_metadata, _load_ghcnh_inventory(download_path)
+    )
 
     print("Mapping ZCTAs to climate zones")
     # add county and ca climate zone mappings
@@ -1268,6 +1445,9 @@ def build_metadata_db(
 
     print("Writing ISD file metadata")
     _write_isd_file_metadata_table(conn, isd_file_metadata)
+
+    print("Writing GHCNh inventory")
+    _write_ghcn_inventory_table(conn, ghcn_inventory)
 
     print("Writing TMY3 station metadata")
     _write_tmy3_station_metadata_table(conn, tmy3_station_metadata)
