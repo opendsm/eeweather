@@ -5,6 +5,8 @@ Guidelines
 ----------
 
 * Make sure you follow PEP 008 style guide conventions.
+* Adding a weather-data source: see `docs/adding-a-source.md`.
+* Adding a variable to the vocabulary: see `docs/expanding-the-vocabulary.md`.
 * Commit messages should start with a capital letter ("Updated models", not "updated models").
 * Write new tests and run old tests! Make sure that % test coverage does not decrease.
 
@@ -30,26 +32,19 @@ Releasing
 Updating the internal db
 ------------------------
 
-The interal source file database needs to be periodically updated.
-
-TODO: automate this!
-
-Here are is the current process to use to update the internal db.
+The scheduled `refresh-registry` workflow updates the live parts of the
+packaged registry (GHCNh station list, observation inventory, quality
+ratings) monthly and opens a pull request; review its diff, run the test
+suite (some registry pins move as the registry ages), update snapshots as
+warranted, and merge. To run the refresh by hand:
 
 ```
-git checkout master
-git pull
-git checkout -b feature/update-db-YYYY-MM-DD
-
-# Rebuild the internal DB
-docker-compose build
-docker-compose run --rm eeweather rebuild-db
-git commit -am "Rebuild db YYYY-MM-DD"
-vim CHANGELOG.md  # write "Update internal database (YYYY-MM-DD)."
-
-# Update the tests and snapshots if everything looks good
-docker-compose run --rm test
-docker-compose run --rm test --snapshot-update
+python -m eeweather.build
+pytest
 ```
 
-Then make a PR and review as normal. Rinse and repeat as necessary.
+Static content (zone geometries and assignments, places, archive
+station lists, identifier mappings) is carried forward from previously
+packaged data; `python -m eeweather.build --migrate OLD DESTDIR` builds
+the per-ownership data files (identifiers, geography pack, one per
+source) from a historical single-file database.

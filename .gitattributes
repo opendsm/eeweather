@@ -1,1 +1,2 @@
-scripts/* linguist-documentation
+tests/fixtures/** -text
+*.db binary

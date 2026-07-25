@@ -4,59 +4,124 @@ Changelog
 Development
 -----------
 
+This release is a redesign; the public API is not compatible with 0.3.x.
+
 * Observed weather data is served from NOAA GHCNh; ISD and GSOD stopped
-  receiving data 2025-08-27. Overlap validation against ISD history shows
-  median hourly deviation of 0.0001 degrees C
-  (`scripts/validate_ghcnh_against_isd.py`).
-* New api: `load_data(usaf_id, start, end, frequency, variables)` returns a
-  DataFrame and warnings, replacing the `load_isd_*`/`load_gsod_*` family;
-  `ISDStation` is renamed `WeatherStation`. GHCNh variables beyond
-  temperature (dew point, relative humidity, wind speed, ...) are available
-  through `variables`.
-* Station registry maps each station to its GHCNh id
-  (`get_ghcn_id(usaf_id)` for one station, `get_ghcn_ids()` for the
-  registry); 349 stations with no
-  GHCNh counterpart are removed. Each station records the first and last
-  year its GHCNh record has observations (`ghcn_first_year`,
-  `ghcn_last_year`); about a fifth of the registry, nearly all low
-  quality, has no observations after 2023.
-* Station quality ratings are computed from the GHCNh inventory (same
-  rule as before: every month of the last five full years above 600
-  observations is high, above 360 is medium). Tiers move for about a
-  fifth of stations, mostly upgrades of stations the retired ISD
-  inventory undercounted: 1858 high / 393 medium / 2246 low.
-* Quality can be rated for the period being requested:
-  `get_station_quality(usaf_id, start, end)` and
-  `rank_stations(..., rating_period=(start, end))` rate stations over
-  the five calendar years ending two years after the period's last
-  date (sliding back to end no later than the last full year), so
-  historical requests rank stations by their reliability in that era.
-  The packaged database carries the monthly counts (`ghcn_inventory`).
-* Caching uses new ghcnh-* keys; ISD-era cache entries are never served.
-* Deleted: FTP fetch code, ISD/GSOD parsing, filename helpers and CLI
-  commands, sphinx docs (documentation moves to opendsm.energy).
-* Switched to https api over FTP for temperature data fetching
-* Remove deprecated `typing` dependency
-* Switch from snapshottest to syrupy for snapshot testing.
-* Update internal database (2025-03-12).
-* Modernize packaging: pyproject.toml with hatchling replaces setup.py,
-  Pipfile, and MANIFEST.in; python >=3.10.
-* Add test workflow (python/os matrix) and tox environments for current
-  python versions.
-* Rewrite key-value cache on stdlib sqlite3; sqlalchemy is no longer used
-  or required. Cache urls must have the sqlite:/// form.
-* Replace retry and attrs dependencies with stdlib equivalents; fix
-  pkg_resources import broken on setuptools >=81.
-* Warn when loaded data is empty, truncated, or contains a multi-day
-  internal gap. Requests ending after a station's last available
-  observation previously returned NaN-padded series silently.
-* Fix crash (`No objects to concatenate`) when all years in a requested
-  range are missing and `error_on_missing_years=False`.
-* Loaders always return a series covering the full requested range.
-* Add `error_on_missing_years` to daily ISD/GSOD loaders; default is True
-  for all loaders, matching the ISDStation method default.
-* Tests run fully offline against captured NCEI access api payloads;
-  add coverage floor.
+  receiving data 2025-08-27. Overlap validation against ISD history
+  showed a median hourly deviation of 0.0001 degrees C.
+* The primary entry point is `WeatherLocation(latitude, longitude)`
+  (construct from a ZIP code with `from_place("zcta", code)`): weather at
+  a point, estimated by configurable sources. `location.candidates()`
+  ranks nearby stations and `location.zones` gives its climate zones.
+  Provenance is the reproducibility mechanism: a location pins itself to
+  the stations resolved at first load, and `to_dict`/`to_json` with
+  `from_dict`/`from_json` carry that state across processes, so later
+  loads (e.g. a reporting period after a baseline) use the same station
+  per source.
+* `WeatherStation` is keyed by the station's GHCN id. Other identifier
+  systems are aliases that translate to it: `from_usaf`,
+  `from_wban` (most-recent mapping wins), `from_icao`, and the generic
+  `from_id(namespace, external_id)`; `WeatherStation.translate(ids,
+  from_namespace, to_namespace)` converts in bulk and
+  `WeatherStation.search(country=, subdivision=, has_sources=)`
+  enumerates the registry as a DataFrame.
+* One loading verb: `load_data(start, end, frequency, variables,
+  source=)` serves observations and typical years alike, returning
+  `(DataFrame, warnings)` with per-source provenance on the frame's
+  attrs and on the station/location object. Each requested variable
+  routes to the first configured source that serves it; typical-year
+  sources (`"tmy3"`, `"cz2010"`) are reachable only by explicit
+  `source=` pin and tile onto requested calendar years by
+  month-day-hour with NaN leap days. Partial coverage returns NaN plus
+  warnings; a pinned source with nothing at all raises
+  `DataNotAvailableError`.
+* Variables have a canonical curated vocabulary with fixed units
+  (temperature, dew point temperature [degC], relative humidity [%],
+  wind speed [m/s], station-level pressure [hPa], visibility [km]) and
+  a per-variable aggregation governing resampling. `load_data`'s
+  `frequency` uses pandas' own offset nomenclature, bound by delegation
+  (pandas parses the alias, so its spellings and deprecations apply
+  automatically): coarser-than-hourly frequencies (`D`, `W`, `MS`,
+  `YS`, ...) aggregate each variable by its declared aggregation —
+  point-in-time variables average, accumulation variables
+  (`aggregation="sum"`) add up within each period and are never
+  gap-interpolated — and finer-than-hourly frequencies (`30min`,
+  `20min`, ...; they must divide the hour evenly) interpolate
+  point-in-time variables linearly between hourly values and spread
+  accumulations evenly, never crossing a missing hour. `eeweather.sources.variables()` lists them
+  and which sources serve each. Arbitrary native GHCNh dataTypes are no
+  longer passed through.
+* Custom data plugs in through public protocols: station-keyed feeds
+  (`eeweather.sources.Feed` — keyed by any translatable id system, with
+  opt-out caching), typical-year sources (`eeweather.sources.
+  NormalsSource`), and location-keyed gridded sources
+  (`eeweather.sources.Source`). `eeweather.sources.register(source)`
+  makes a custom feed or normals source nameable — usable as a string
+  in preference tuples and `source=` pins, and rebuildable by location
+  serialization — and accepts vocabulary entries
+  (`register(..., vocabulary=(Variable(name, unit, description,
+  aggregation),))`)
+  for variables the canonical vocabulary lacks, which then route and
+  validate like canonical ones. Canonical names are reserved and
+  definitions must agree across sources, so a registered variable's
+  unit is frozen at first registration.
+* Packaged data is split by ownership: the registry holds the
+  identifier crosswalk (`identifiers.db`) and regional geography packs
+  (`geography_us.db`: zone geometries, ZCTA places, zone assignments);
+  each source packages its own facts beside its adapter (the GHCNh
+  station catalog with zone assignments, observation inventory, and
+  quality ratings; TMY3/CZ2010 archive station lists). 349 ISD
+  stations with no GHCNh counterpart were removed during the migration.
+* The live packaged data (station catalog, observation inventory,
+  quality ratings, identifier aliases) keeps itself current without
+  package releases: when it is more than six months old — quality
+  rating windows advance when a calendar year completes, so six months
+  caps the lag behind that yearly step — loading data starts a
+  background update into the platform user data directory, which takes
+  precedence over the wheel's copies in new processes
+  (`EEWEATHER_AUTO_UPDATE=0` disables; `python -m
+  eeweather.registry.update` updates on demand, `--clear` reverts).
+  Updates prefer the ready-made pack a scheduled workflow publishes to
+  the repository's rolling release — CDN-served, so fleets of any size
+  cost NOAA nothing and clients skip the local rebuild — and fall back
+  to rebuilding from the live NOAA files when the channel is
+  unreachable, implausible, stale, or no newer than the local data.
+  Concurrent workers coordinate through an atomic claim file (one
+  attempt per machine per day) and the update thread defers network
+  traffic for a minute, so short-lived pipeline workers exit without
+  fetching anything.
+  New stations must sit within 10 km of a known zone geometry and show
+  recent observations to be appended; implausibly small upstream files
+  abort an update, leaving the previous data in place. A scheduled
+  workflow keeps the wheel's snapshot current via the same refresh.
+* Station quality ratings come from the GHCNh inventory (every month of
+  the rating window above 600 observations is high, above 360 medium);
+  `rank_stations(..., rating_period=(start, end))` rates stations over
+  the five calendar years ending two years after the period's last date
+  (sliding back to the last full year), so historical requests rank
+  stations by their reliability in that era.
+* Exceptions live in `eeweather.exceptions` (not re-exported at the
+  root), carry their messages through `str()`, and cover distinct
+  recovery paths: `UnrecognizedStationError`, `UnrecognizedPlaceError`,
+  `AmbiguousIdentifierError`, `DataNotAvailableError`,
+  `NoQualifiedStationError`. Non-UTC datetimes raise `ValueError`.
+* The GHCNh fetch reuses one session, retries only connection and
+  server errors with backoff, and raises client errors immediately.
+  Loads warn when data is empty, starts late, ends early, or contains a
+  multi-day internal gap.
+* The shared cache is a stdlib-sqlite store at the platform user cache
+  dir by default (`EEWEATHER_CACHE_URL` env var and
+  `eeweather.cache.set_path()` override; `eeweather.cache.clear()`
+  empties it). ISD-era and 0.3.x cache entries are never served.
+* Public type hints ship with a `py.typed` marker.
+* Modernized packaging: pyproject.toml with hatchling replaces setup.py,
+  Pipfile, and MANIFEST.in; python >=3.10; sqlalchemy, click, and pytz
+  are no longer dependencies; platformdirs and shapely are. The CLI,
+  plotting helpers, sphinx docs (documentation moves to opendsm.energy),
+  and FTP-era fetch code are deleted.
+* Tests run fully offline against captured NCEI access api payloads,
+  with a python/os matrix workflow, tox environments, ruff lint, and a
+  97% coverage floor.
 
 0.3.29
 ------
