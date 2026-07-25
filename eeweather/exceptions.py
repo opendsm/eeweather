@@ -1,136 +1,151 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-"""
+"""Exceptions and the warning type returned by data loads.
 
-Copyright 2018-2023 OpenEEmeter contributors
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
+These are data-dependent conditions pipelines legitimately branch on.
+Caller bugs (e.g. non-UTC datetimes) raise plain ValueError instead.
 """
 
 
 class EEWeatherError(Exception):
     """Base class for exceptions in the eeweather package."""
 
-    pass
+    def __init__(self, message):
+        super().__init__(message)
+        self.message = message
 
 
-class UnrecognizedUSAFIDError(EEWeatherError):
-    """Raised when an unrecognized USAF station id is encountered.
+class UnrecognizedStationError(EEWeatherError):
+    """Raised when a station id is not in the registry.
 
     Attributes
     ----------
     value : str
-        the value which is not a valid USAF ID
-    message : str
-        a message describing the error
+        the value which is not a recognized station id
     """
 
     def __init__(self, value):
-        self.value = value
-        self.message = (
-            'The value "{}" was not recognized as a valid USAF weather station'
+        super().__init__(
+            'The value "{}" was not recognized as a valid weather station'
             " identifier.".format(value)
         )
+        self.value = value
 
 
-class UnrecognizedZCTAError(EEWeatherError):
-    """Raised when an unrecognized ZCTA is encountered.
+class UnrecognizedPlaceError(EEWeatherError):
+    """Raised when a place code is not in the registry.
 
     Attributes
     ----------
-    value : str
-        the value which is not a valid ZCTA
-    message : str
-        a message describing the error
+    kind : str
+        the place kind, e.g. ``'zcta'``
+    code : str
+        the code which is not a recognized place of that kind
     """
 
-    def __init__(self, value):
-        self.value = value
-        self.message = (
-            'The value "{}" was not recognized as a valid ZCTA identifier.'.format(
-                value
-            )
+    def __init__(self, kind, code):
+        super().__init__(
+            'The value "{}" was not recognized as a valid place of kind'
+            ' "{}".'.format(code, kind)
         )
+        self.kind = kind
+        self.code = code
+
+
+class AmbiguousIdentifierError(EEWeatherError):
+    """Raised when an external identifier maps to multiple stations and no
+    mapping is marked recent.
+
+    Attributes
+    ----------
+    namespace : str
+        the identifier system, e.g. ``'wban'``
+    external_id : str
+        the ambiguous identifier
+    station_ids : tuple of str
+        the registry stations the identifier maps to
+    """
+
+    def __init__(self, namespace, external_id, station_ids):
+        super().__init__(
+            'The {} id "{}" maps to multiple stations ({}) and cannot be'
+            " resolved.".format(namespace, external_id, ", ".join(station_ids))
+        )
+        self.namespace = namespace
+        self.external_id = external_id
+        self.station_ids = tuple(station_ids)
 
 
 class DataNotAvailableError(EEWeatherError):
-    """Raised when data is not available for a particular station and year.
+    """Raised when a source has no data at all for a request.
+
+    Partial coverage never raises; it surfaces as NaN values plus warnings.
 
     Attributes
     ----------
-    usaf_id : str
-        the USAF ID for which data does not exist.
-    year : int
-        the year for which data does not exist.
-    message : str
-        a message describing the error
+    source : str
+        the source that had no data
+    station_id : str or None
+        the station requested; None for non-station sources
+    year : int or None
+        the year requested; None when the whole request had no data
     """
 
-    def __init__(self, usaf_id, year):
-        self.usaf_id = usaf_id
+    def __init__(self, source, *, station_id=None, year=None):
+        super().__init__(
+            "No {} data available for station={} year={}.".format(
+                source, station_id, year
+            )
+        )
+        self.source = source
+        self.station_id = station_id
         self.year = year
-        self.message = 'Data does not exist for station "{}" in year {}.'.format(
-            usaf_id, year
+
+
+class NoQualifiedStationError(EEWeatherError):
+    """Raised when no station in the registry qualifies to estimate weather
+    at a location under the configured filters.
+
+    Attributes
+    ----------
+    latitude, longitude : float
+        the location that could not be served
+    """
+
+    def __init__(self, latitude, longitude):
+        super().__init__(
+            "No qualified station found for location ({}, {}).".format(
+                latitude, longitude
+            )
         )
+        self.latitude = latitude
+        self.longitude = longitude
 
 
-class TMY3DataNotAvailableError(EEWeatherError):
-    """Raised when TMY3 data is not available for a particular station.
-
-    Attributes
-    ----------
-    usaf_id : str
-        the USAF ID for which TMY3 data does not exist.
-    message : str
-        a message describing the error
-    """
-
-    def __init__(self, usaf_id):
-        self.usaf_id = usaf_id
-        self.message = 'TMY3 data does not exist for station "{}".'.format(usaf_id)
-
-
-class CZ2010DataNotAvailableError(EEWeatherError):
-    """Raised when CZ2010 data is not available for a particular station.
+class EEWeatherWarning(object):
+    """A warning describing a data condition, returned alongside loaded data.
 
     Attributes
     ----------
-    usaf_id : str
-        the USAF ID for which CZ2010 data does not exist.
-    message : str
-        a message describing the error
+    qualified_name : str
+        Qualified name, e.g. ``'eeweather.data_gap'``.
+    description : str
+        Prose describing the nature of the warning.
+    data : dict
+        Data that reproducibly shows why the warning was issued.
     """
 
-    def __init__(self, usaf_id):
-        self.usaf_id = usaf_id
-        self.message = 'CZ2010 data does not exist for station "{}".'.format(usaf_id)
+    def __init__(self, qualified_name, description, data):
+        self.qualified_name = qualified_name
+        self.description = description
+        self.data = data
 
+    def __repr__(self):
+        return "EEWeatherWarning(qualified_name={})".format(self.qualified_name)
 
-class NonUTCTimezoneInfoError(EEWeatherError):
-    """Raised when input start and end date aren't explicitly defined
-    to have a UTC timezone.
+    def json(self):
+        serialized = {
+            "qualified_name": self.qualified_name,
+            "description": self.description,
+            "data": self.data,
+        }
 
-    Attributes
-    ----------
-    usaf_id : str
-        the USAF ID for which CZ2010 data does not exist.
-    message : str
-        a message describing the error
-    """
-
-    def __init__(self, this_date):
-        self.message = (
-            '"{}" does not have a UTC timezone. If using the datetime package, it should be'
-            " in the format datetime(1,1,1,tzinfo=pytz.UTC).".format(this_date)
-        )
+        return serialized
