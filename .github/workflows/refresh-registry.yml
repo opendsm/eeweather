@@ -1,0 +1,56 @@
+name: Refresh registry
+
+on:
+  schedule:
+    # monthly; GHCNh inventory updates continuously, ratings decay yearly
+    - cron: "0 6 2 * *"
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install package
+        run: pip install -e .[dev]
+      - name: Refresh live registry content
+        run: python -m eeweather.build
+      # refresh PRs opened with GITHUB_TOKEN do not trigger pull_request
+      # workflows, so the suite must pass here, against the refreshed data
+      - name: Run the test suite against the refreshed data
+        run: pytest tests/ -o addopts=
+      # clients' auto-update downloads these assets (CDN-served) instead
+      # of each rebuilding from NOAA; the wheel snapshot updates via PR
+      - name: Publish refreshed data to the rolling release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create registry-latest \
+            --title "Latest registry data" \
+            --notes "Refreshed registry data, published by the scheduled workflow. Client auto-update downloads these files when local data is stale." \
+            || true
+          gh release upload registry-latest \
+            eeweather/sources/ghcnh/ghcnh.db \
+            eeweather/registry/identifiers.db \
+            --clobber
+      - name: Open pull request with the refreshed registry
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: Refresh registry inventory and quality ratings
+          title: Refresh registry inventory and quality ratings
+          body: |
+            Scheduled refresh of the packaged registry database: GHCNh
+            observation inventory, newly listed stations, and build-time
+            quality ratings. Static content (zones, places, identifiers,
+            normals) is untouched.
+          branch: automation/refresh-registry
+          delete-branch: true
+          add-paths: |
+            eeweather/sources/ghcnh/ghcnh.db
+            eeweather/registry/identifiers.db
