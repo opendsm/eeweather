@@ -1,29 +1,16 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-"""
-
-Copyright 2018-2023 OpenEEmeter contributors
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
-"""
 from datetime import datetime
+
 import pandas as pd
 import pytest
 import pytz
 
-from eeweather import rank_stations, combine_ranked_stations, select_station
 from eeweather.exceptions import DataNotAvailableError
+from eeweather.sources.matching import (
+    combine_ranked_stations,
+    rank_stations,
+    select_station,
+)
+
 
 
 @pytest.fixture
@@ -49,102 +36,105 @@ def test_rank_stations_no_filter(lat_long_fresno, snapshot):
         "iecc_moisture_regime",
         "ba_climate_zone",
         "ca_climate_zone",
-        "rough_quality",
+        "quality",
         "elevation",
-        "state",
+        "subdivision",
+        "is_cz2010",
         "tmy3_class",
         "is_tmy3",
-        "is_cz2010",
         "difference_elevation_meters",
     ]
     assert round(df.distance_meters.iloc[0]) == 2723
-    assert round(df.distance_meters.iloc[-10]) == 15057891
+    assert round(df.distance_meters.iloc[-10]) == 15046116
     # every station in the registry has coordinates, so every distance is real
     assert pd.notnull(df.distance_meters.iloc[-1])
 
 
-def test_rank_stations_match_climate_zones_not_null(lat_long_fresno, snapshot):
+def test_rank_stations_match_zones_not_null(lat_long_fresno, snapshot):
     lat, lng = lat_long_fresno
-    df = rank_stations(lat, lng, match_iecc_climate_zone=True)
-    assert df.shape == snapshot(name="match_iecc_climate_zone")
-
-    df = rank_stations(lat, lng, match_iecc_moisture_regime=True)
-    assert df.shape == snapshot(name="match_iecc_moisture_regime")
-
-    df = rank_stations(lat, lng, match_ba_climate_zone=True)
-    assert df.shape == snapshot(name="match_ba_climate_zone")
-
-    df = rank_stations(lat, lng, match_ca_climate_zone=True)
-    assert df.shape == snapshot(name="match_ca_climate_zone")
+    for system in (
+        "iecc_climate_zone",
+        "iecc_moisture_regime",
+        "ba_climate_zone",
+        "ca_climate_zone",
+    ):
+        df = rank_stations(lat, lng, match_zones=(system,))
+        assert df.shape == snapshot(name="match_zones={}".format(system))
 
 
-def test_rank_stations_match_climate_zones_null(lat_long_africa, snapshot):
+def test_rank_stations_match_zones_null(lat_long_africa, snapshot):
+    # the site has no zones, so matching candidates have none either
     lat, lng = lat_long_africa
-    df = rank_stations(lat, lng, match_iecc_climate_zone=True)
-    assert df.shape == snapshot(name="match_iecc_climate_zone")
-
-    df = rank_stations(lat, lng, match_iecc_moisture_regime=True)
-    assert df.shape == snapshot(name="match_iecc_moisture_regime")
-
-    df = rank_stations(lat, lng, match_ba_climate_zone=True)
-    assert df.shape == snapshot(name="match_ba_climate_zone")
-
-    df = rank_stations(lat, lng, match_ca_climate_zone=True)
-    assert df.shape == snapshot(name="match_ca_climate_zone")
+    df = rank_stations(
+        lat, lng, match_zones=("iecc_climate_zone", "iecc_moisture_regime")
+    )
+    assert df.shape == snapshot(name="match_zones without site zones")
+    assert df.iecc_climate_zone.isnull().all()
 
 
-def test_rank_stations_match_state(lat_long_fresno, snapshot):
+def test_rank_stations_match_zones_unknown_system(lat_long_fresno):
     lat, lng = lat_long_fresno
-    df = rank_stations(lat, lng, site_state="CA")
-    assert df.shape == snapshot(name="site_state=CA, match_state=False")
-
-    df = rank_stations(lat, lng, site_state="CA", match_state=True)
-    assert df.shape == snapshot(name="site_state=CA, match_state=True")
-
-    df = rank_stations(lat, lng, site_state=None, match_state=True)
-    assert df.shape == snapshot(name="site_state=None, match_state=True")
+    with pytest.raises(ValueError):
+        rank_stations(lat, lng, match_zones=("not_a_system",))
 
 
-def test_rank_stations_is_tmy3(lat_long_fresno, snapshot):
+def test_rank_stations_match_subdivision(lat_long_fresno, snapshot):
     lat, lng = lat_long_fresno
-    df = rank_stations(lat, lng, is_tmy3=True)
-    assert df.shape == snapshot(name="is_tmy3=True")
+    df = rank_stations(lat, lng, site_subdivision="CA")
+    assert df.shape == snapshot(name="site_subdivision only, no filter")
 
-    df = rank_stations(lat, lng, is_tmy3=False)
-    assert df.shape == snapshot(name="is_tmy3=False")
+    df = rank_stations(
+        lat, lng, site_subdivision="CA", match_subdivision=True
+    )
+    assert df.shape == snapshot(name="match_subdivision=True")
+    assert (df.subdivision == "CA").all()
+
+    df = rank_stations(lat, lng, site_subdivision=None, match_subdivision=True)
+    assert df.shape == snapshot(name="match_subdivision without subdivision")
+    assert df.subdivision.isnull().all()
 
 
-def test_rank_stations_is_cz2010(lat_long_fresno, snapshot):
+def test_rank_stations_has_sources(lat_long_fresno, snapshot):
     lat, lng = lat_long_fresno
-    df = rank_stations(lat, lng, is_cz2010=True)
-    assert df.shape == snapshot(name="is_cz2010=True")
+    df = rank_stations(lat, lng, has_sources=("tmy3",))
+    assert df.shape == snapshot(name="has_sources=tmy3")
+    assert df.is_tmy3.all()
 
-    df = rank_stations(lat, lng, is_cz2010=False)
-    assert df.shape == snapshot(name="is_cz2010=False")
+    df = rank_stations(lat, lng, has_sources=("cz2010",))
+    assert df.shape == snapshot(name="has_sources=cz2010")
+    assert df.is_cz2010.all()
+
+    # every registry station serves ghcnh, so this filters nothing
+    df_ghcnh = rank_stations(lat, lng, has_sources=("ghcnh",))
+    df_all = rank_stations(lat, lng)
+    assert df_ghcnh.shape == df_all.shape
+
+
+def test_rank_stations_has_sources_unknown_source(lat_long_fresno):
+    lat, lng = lat_long_fresno
+    with pytest.raises(ValueError):
+        rank_stations(lat, lng, has_sources=("not_a_source",))
 
 
 def test_rank_stations_minimum_quality(lat_long_fresno, snapshot):
     lat, lng = lat_long_fresno
     df = rank_stations(lat, lng, minimum_quality="low")
     assert df.shape == snapshot(name="minimum_quality=low")
+    assert df.quality.isin(("low", "medium", "high")).all()
 
     df = rank_stations(lat, lng, minimum_quality="medium")
     assert df.shape == snapshot(name="minimum_quality=medium")
+    assert df.quality.isin(("medium", "high")).all()
 
     df = rank_stations(lat, lng, minimum_quality="high")
     assert df.shape == snapshot(name="minimum_quality=high")
+    assert (df.quality == "high").all()
 
 
-def test_rank_stations_minimum_tmy3_class(lat_long_fresno, snapshot):
+def test_rank_stations_minimum_quality_unknown_value(lat_long_fresno):
     lat, lng = lat_long_fresno
-    df = rank_stations(lat, lng, minimum_tmy3_class="III")
-    assert df.shape == snapshot(name="minimum_tmy3_class=III")
-
-    df = rank_stations(lat, lng, minimum_tmy3_class="II")
-    assert df.shape == snapshot(name="minimum_tmy3_class=II")
-
-    df = rank_stations(lat, lng, minimum_tmy3_class="I")
-    assert df.shape == snapshot(name="minimum_tmy3_class=I")
+    with pytest.raises(ValueError):
+        rank_stations(lat, lng, minimum_quality="excellent")
 
 
 def test_rank_stations_max_distance_meters(lat_long_fresno, snapshot):
@@ -152,15 +142,17 @@ def test_rank_stations_max_distance_meters(lat_long_fresno, snapshot):
 
     df = rank_stations(lat, lng, max_distance_meters=200000)
     assert df.shape == snapshot(name="max_distance_meters=200000")
+    assert (df.distance_meters <= 200000).all()
 
     df = rank_stations(lat, lng, max_distance_meters=50000)
     assert df.shape == snapshot(name="max_distance_meters=50000")
+    assert (df.distance_meters <= 50000).all()
 
 
 def test_rank_stations_max_difference_elevation_meters(lat_long_fresno, snapshot):
     lat, lng = lat_long_fresno
 
-    # no site_elevation
+    # no site_elevation, so the filter is inert
     df = rank_stations(lat, lng, max_difference_elevation_meters=200)
     assert df.shape == snapshot(name="max_difference_elevation_meters=200")
 
@@ -168,11 +160,13 @@ def test_rank_stations_max_difference_elevation_meters(lat_long_fresno, snapshot
     assert df.shape == snapshot(
         name="site_elevation=0, max_difference_elevation_meters=200"
     )
+    assert (df.difference_elevation_meters <= 200).all()
 
     df = rank_stations(lat, lng, site_elevation=0, max_difference_elevation_meters=50)
     assert df.shape == snapshot(
         name="site_elevation=0, max_difference_elevation_meters=50"
     )
+    assert (df.difference_elevation_meters <= 50).all()
 
     df = rank_stations(
         lat, lng, site_elevation=1000, max_difference_elevation_meters=50
@@ -180,30 +174,36 @@ def test_rank_stations_max_difference_elevation_meters(lat_long_fresno, snapshot
     assert df.shape == snapshot(
         name="site_elevation=1000, max_difference_elevation_meters=50"
     )
+    assert (df.difference_elevation_meters <= 50).all()
 
 
 @pytest.fixture
 def cz_candidates(lat_long_fresno):
     lat, lng = lat_long_fresno
-    return rank_stations(
+    candidates = rank_stations(
         lat,
         lng,
-        match_iecc_climate_zone=True,
-        match_iecc_moisture_regime=True,
-        match_ba_climate_zone=True,
-        match_ca_climate_zone=True,
+        match_zones=(
+            "iecc_climate_zone",
+            "iecc_moisture_regime",
+            "ba_climate_zone",
+            "ca_climate_zone",
+        ),
         minimum_quality="high",
-        is_tmy3=True,
-        is_cz2010=True,
+        has_sources=("tmy3", "cz2010"),
     )
+
+    return candidates
 
 
 @pytest.fixture
 def naive_candidates(lat_long_fresno):
     lat, lng = lat_long_fresno
-    return rank_stations(
-        lat, lng, minimum_quality="high", is_tmy3=True, is_cz2010=True
+    candidates = rank_stations(
+        lat, lng, minimum_quality="high", has_sources=("tmy3", "cz2010")
     ).head()
+
+    return candidates
 
 
 def test_combine_ranked_stations_empty():
@@ -213,16 +213,16 @@ def test_combine_ranked_stations_empty():
 
 def test_combine_ranked_stations(cz_candidates, naive_candidates):
     assert list(cz_candidates.index) == [
-        "723890",
-        "747020",
-        "723840",
+        "USW00093193",
+        "USW00023110",
+        "USW00023155",
     ]
     assert list(naive_candidates.index) == [
-        "723890",
-        "747020",
-        "724815",
-        "723965",
-        "724926",
+        "USW00093193",
+        "USW00023110",
+        "USW00023257",
+        "USW00093209",
+        "USW00023258",
     ]
 
     combined_candidates = combine_ranked_stations([cz_candidates, naive_candidates])
@@ -231,23 +231,43 @@ def test_combine_ranked_stations(cz_candidates, naive_candidates):
     assert combined_candidates["rank"].iloc[0] == 1
     assert combined_candidates["rank"].iloc[-1] == 6
     assert list(combined_candidates.index) == [
-        "723890",
-        "747020",
-        "723840",
-        "724815",
-        "723965",
-        "724926",
+        "USW00093193",
+        "USW00023110",
+        "USW00023155",
+        "USW00023257",
+        "USW00093209",
+        "USW00023258",
     ]
 
 
 def test_select_station_no_coverage_check(cz_candidates):
     station, warnings = select_station(cz_candidates)
-    assert station.usaf_id == "723890"
+    assert station.id == "USW00093193"
+
+
+def test_select_station_real_coverage_path(
+    monkeypatch_tmy3_request, monkeypatch_key_value_store
+):
+    # exercises the real load_hourly_temp_data -> station.load_data -> tmy3
+    # source path (no monkeypatch of load_hourly_temp_data itself), against
+    # the recorded 722880TYA.CSV fixture for station USW00023152
+    candidates = rank_stations(34.200, -118.350, has_sources=("tmy3",))
+    assert candidates.index[0] == "USW00023152"
+
+    start = datetime(2006, 1, 3, tzinfo=pytz.UTC)
+    end = datetime(2007, 4, 3, tzinfo=pytz.UTC)
+
+    station, warnings = select_station(
+        candidates, coverage_range=(start, end), coverage_source="tmy3"
+    )
+
+    assert station.id == "USW00023152"
+    assert warnings == []
 
 
 @pytest.fixture
 def monkeypatch_load_hourly_temp_data(monkeypatch):
-    def load_hourly_temp_data(station, start, end, fetch_from_web=True):
+    def load_hourly_temp_data(station, start, end, fetch_from_web=True, source=None):
         # because result datetimes should fall exactly on hours
         normalized_start = datetime(
             start.year, start.month, start.day, start.hour, tzinfo=pytz.UTC
@@ -258,12 +278,16 @@ def monkeypatch_load_hourly_temp_data(monkeypatch):
         index = pd.date_range(normalized_start, normalized_end, freq="h", tz="UTC")
 
         # simulate missing data
-        if station.usaf_id in ("723890", "723896"):
-            return pd.Series(1, index=index)[: -24 * 50].reindex(index), []
-        return pd.Series(1, index=index)[: -24 * 10].reindex(index), []
+        no_warnings = []
+        if station.id in ("USW00093193", "USW00093144"):
+            temps = pd.Series(1, index=index)[: -24 * 50].reindex(index)
+        else:
+            temps = pd.Series(1, index=index)[: -24 * 10].reindex(index)
+
+        return temps, no_warnings
 
     monkeypatch.setattr(
-        "eeweather.mockable.load_hourly_temp_data", load_hourly_temp_data
+        "eeweather.sources.matching.load_hourly_temp_data", load_hourly_temp_data
     )
 
 
@@ -273,13 +297,13 @@ def test_select_station_full_data(cz_candidates, monkeypatch_load_hourly_temp_da
 
     # 1st misses qualification
     station, warnings = select_station(cz_candidates, coverage_range=(start, end))
-    assert station.usaf_id == "747020"
+    assert station.id == "USW00023110"
 
     # 1st meets qualification
     station, warnings = select_station(
         cz_candidates, coverage_range=(start, end), min_fraction_coverage=0.8
     )
-    assert station.usaf_id == "723890"
+    assert station.id == "USW00093193"
 
     # none meet qualification
     station, warnings = select_station(
@@ -290,27 +314,30 @@ def test_select_station_full_data(cz_candidates, monkeypatch_load_hourly_temp_da
 
 @pytest.fixture
 def monkeypatch_load_hourly_temp_data_with_error(monkeypatch):
-    def load_hourly_temp_data(station, start, end, fetch_from_web=True):
+    def load_hourly_temp_data(station, start, end, fetch_from_web=True, source=None):
         index = pd.date_range(start, end, freq="h", tz="UTC")
-        if station.usaf_id == "723890":
+        if station.id == "USW00093193":
+            # first choice not available
             raise DataNotAvailableError(
-                "723890", start.year
-            )  # first choice not available
-        elif station.usaf_id == "747020":
-            return pd.Series(1, index=index)[: -24 * 10].reindex(index), []
+                "ghcnh", station_id="USW00093193", year=start.year
+            )
+        elif station.id == "USW00023110":
+            temps = pd.Series(1, index=index)[: -24 * 10].reindex(index)
+            no_warnings = []
+
+            return temps, no_warnings
         else:  # pragma: no cover - only for helping to debug failing tests
             raise ValueError(
-                "The requested station is not specified in the monkeypatched data: {}.".format(
-                    station
-                )
+                "The requested station is not specified in the monkeypatched"
+                " data: {}.".format(station)
             )
 
     monkeypatch.setattr(
-        "eeweather.mockable.load_hourly_temp_data", load_hourly_temp_data
+        "eeweather.sources.matching.load_hourly_temp_data", load_hourly_temp_data
     )
 
 
-def test_select_station_with_isd_data_not_available_error(
+def test_select_station_with_data_not_available_error(
     cz_candidates, monkeypatch_load_hourly_temp_data_with_error
 ):
     start = datetime(2017, 1, 1, tzinfo=pytz.UTC)
@@ -320,26 +347,30 @@ def test_select_station_with_isd_data_not_available_error(
     station, warnings = select_station(
         cz_candidates, coverage_range=(start, end), min_fraction_coverage=0.8
     )
-    assert station.usaf_id == "747020"
+    assert station.id == "USW00023110"
 
 
 @pytest.fixture
 def monkeypatch_load_hourly_temp_data_with_empty(monkeypatch):
-    def load_hourly_temp_data(station, start, end, fetch_from_web=True):
+    def load_hourly_temp_data(station, start, end, fetch_from_web=True, source=None):
         index = pd.date_range(start, end, freq="h", tz="UTC")
-        if station.usaf_id == "723890":
-            return pd.Series(1, index=index)[:0], []
-        elif station.usaf_id == "747020":
-            return pd.Series(1, index=index)[: -24 * 10].reindex(index), []
+        no_warnings = []
+        if station.id == "USW00093193":
+            temps = pd.Series(1, index=index)[:0]
+
+            return temps, no_warnings
+        elif station.id == "USW00023110":
+            temps = pd.Series(1, index=index)[: -24 * 10].reindex(index)
+
+            return temps, no_warnings
         else:  # pragma: no cover - only for helping to debug failing tests
             raise ValueError(
-                "The requested station is not specified in the monkeypatched data: {}.".format(
-                    station
-                )
+                "The requested station is not specified in the monkeypatched"
+                " data: {}.".format(station)
             )
 
     monkeypatch.setattr(
-        "eeweather.mockable.load_hourly_temp_data", load_hourly_temp_data
+        "eeweather.sources.matching.load_hourly_temp_data", load_hourly_temp_data
     )
 
 
@@ -353,7 +384,7 @@ def test_select_station_with_empty_tempC(
     station, warnings = select_station(
         cz_candidates, coverage_range=(start, end), min_fraction_coverage=0.8
     )
-    assert station.usaf_id == snapshot
+    assert station.id == snapshot
 
 
 def test_select_station_distance_warnings_check(lat_long_africa):
@@ -382,25 +413,24 @@ def test_select_station_with_second_level_dates(
     end = datetime(2018, 1, 1, 12, 13, 14, tzinfo=pytz.UTC)
 
     station, warnings = select_station(cz_candidates, coverage_range=(start, end))
-    assert station.usaf_id == snapshot
+    assert station.id == snapshot
 
 
 def test_rank_stations_rating_period_uses_era_quality(lat_long_fresno):
     lat, lng = lat_long_fresno
-    start = datetime(2010, 1, 1, tzinfo=pytz.UTC)
-    end = datetime(2014, 12, 31, tzinfo=pytz.UTC)
+    anchor = datetime(2014, 12, 31, tzinfo=pytz.UTC)
 
     df = rank_stations(
-        lat, lng, minimum_quality="high", is_tmy3=True, is_cz2010=True,
-        rating_period=(start, end),
+        lat, lng, minimum_quality="high", has_sources=("tmy3", "cz2010"),
+        rating_period=anchor,
     )
 
     # 723895 and 723896 rate high in their active era despite being
     # medium or low today
     assert list(df.head().index) == [
-        "723890",
-        "747020",
-        "723896",
-        "724815",
-        "723895",
+        "USW00093193",
+        "USW00023110",
+        "USW00093144",
+        "USW00023257",
+        "USW00023149",
     ]

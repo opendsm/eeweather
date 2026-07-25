@@ -1,24 +1,24 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
+"""Weather-data sources and estimation strategies.
+
+A *source* is a provider of weather data. Strings name the built-in
+sources (``"ghcnh"``, ``"tmy3"``, ``"cz2010"``); configured or custom
+sources are objects. Station-keyed external data plugs in through the
+:class:`Feed` protocol; location-keyed (gridded) data implements
+:class:`Source` directly.
 """
-
-Copyright 2018-2023 OpenEEmeter contributors
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
-"""
-from .ghcnh import DEFAULT_VARIABLES, fetch_ghcnh_hourly
+from .base import Feed, NormalsSource, Source
+from .engine import register, variables
+from .station_source import StationSource
+from .vocabulary import Variable
 
 
 
-__all__ = ("DEFAULT_VARIABLES", "fetch_ghcnh_hourly")
+__all__ = (
+    "Source",
+    "StationSource",
+    "Feed",
+    "NormalsSource",
+    "Variable",
+    "register",
+    "variables",
+)

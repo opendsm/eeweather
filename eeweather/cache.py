@@ -1,21 +1,9 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-"""
+"""The shared weather-data cache.
 
-Copyright 2018-2023 OpenEEmeter contributors
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
+One sqlite-backed JSON key-value store serves every station and source.
+Its location is taken from ``set_path``, the EEWEATHER_CACHE_URL
+environment variable, or the platform user cache directory, in that
+order.
 """
 import contextlib
 import datetime
@@ -23,11 +11,17 @@ import json
 import os
 import sqlite3
 
-import pytz
+import platformdirs
 
 
 
 SQLITE_URL_PREFIX = "sqlite:///"
+
+DATA_EXPIRATION_DAYS = 1
+
+# a data year keeps arriving for a while after it ends (publication lag),
+# so entries written shortly after year end stay refreshable
+YEAR_END_GRACE_DAYS = 14
 
 
 def _sqlite_path_from_url(url):
@@ -41,12 +35,7 @@ def _sqlite_path_from_url(url):
 
 
 class KeyValueStore(object):
-    """JSON key-value store on a local sqlite database.
-
-    The database location is taken from the url argument, the
-    EEWEATHER_CACHE_URL environment variable, or ~/.eeweather/cache.db,
-    in that order. Urls have the form sqlite:///path/to/cache.db.
-    """
+    """JSON key-value store on a local sqlite database."""
 
     def __init__(self, url=None):
         self._prepare_db(url)
@@ -57,9 +46,8 @@ class KeyValueStore(object):
     def _get_url(self):  # pragma: no cover (tests always provide url)
         url = os.environ.get("EEWEATHER_CACHE_URL")
         if url is None:
-            directory = "{}/.eeweather".format(os.path.expanduser("~"))
-            if not os.path.exists(directory):
-                os.makedirs(directory)
+            directory = platformdirs.user_cache_dir("eeweather")
+            os.makedirs(directory, exist_ok=True)
             url = "sqlite:///{}/cache.db".format(directory)
 
         return url
@@ -73,26 +61,38 @@ class KeyValueStore(object):
         with self._connect() as conn, conn:
             conn.execute(
                 "create table if not exists items ("
-                " key text unique,"
+                " key text primary key,"
                 " data text,"
                 " updated text)"
             )
-            conn.execute("create index if not exists ix_items_key on items (key)")
 
     def _connect(self):
         # closes the connection on exit; writes commit via the inner
         # transaction context in each caller
         return contextlib.closing(sqlite3.connect(self._path))
 
-    def key_exists(self, key):
+    def key_exists(self, key: str) -> bool:
         with self._connect() as conn:
             row = conn.execute("select 1 from items where key = ?", (key,)).fetchone()
 
         return row is not None
 
+    def keys(self, prefix: str) -> list:
+        """All keys beginning with a prefix, sorted."""
+        escaped = (
+            prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        )
+        with self._connect() as conn:
+            rows = conn.execute(
+                "select key from items where key like ? escape '\\' order by key",
+                (escaped + "%",),
+            ).fetchall()
+
+        return [row[0] for row in rows]
+
     def save_json(self, key, data):
         data = json.dumps(data, separators=(",", ":"))
-        updated = datetime.datetime.now(pytz.UTC).isoformat()
+        updated = datetime.datetime.now(datetime.timezone.utc).isoformat()
         with self._connect() as conn, conn:
             conn.execute(
                 "insert into items (key, data, updated) values (?, ?, ?)"
@@ -128,3 +128,55 @@ class KeyValueStore(object):
                 conn.execute("delete from items")
             else:
                 conn.execute("delete from items where key = ?", (key,))
+
+
+class KeyValueStoreProxy(object):
+    def __init__(self):
+        self._store = None
+
+    def get_store(self):  # pragma: no cover
+        if self._store is None:
+            self._store = KeyValueStore()
+
+        return self._store
+
+    def set_store(self, store):
+        self._store = store
+
+
+key_value_store_proxy = KeyValueStoreProxy()
+
+
+def set_path(path: str) -> None:
+    """Point the shared weather cache at a specific sqlite file, creating
+    its directory if needed.
+
+    All stations and sources share this one store; overrides the
+    EEWEATHER_CACHE_URL environment variable and the default location.
+    """
+    parent = os.path.dirname(os.path.abspath(path))
+    os.makedirs(parent, exist_ok=True)
+    key_value_store_proxy.set_store(KeyValueStore("sqlite:///{}".format(path)))
+
+
+def clear() -> None:
+    """Drop all cached weather data from the shared store."""
+    key_value_store_proxy.get_store().clear()
+
+
+def _expired(last_updated, year):
+    """Whether a cache entry for a data year is stale: entries written
+    while the year's data was still arriving (during the year, or within
+    YEAR_END_GRACE_DAYS after it ends) expire after
+    DATA_EXPIRATION_DAYS."""
+    if last_updated is None:
+        return True
+    expiration_limit = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
+        days=DATA_EXPIRATION_DAYS
+    )
+    volatile_until = datetime.datetime(
+        year + 1, 1, 1, tzinfo=datetime.timezone.utc
+    ) + datetime.timedelta(days=YEAR_END_GRACE_DAYS)
+    still_volatile = last_updated < volatile_until
+
+    return expiration_limit > last_updated and still_volatile

@@ -1,0 +1,127 @@
+# serializer version: 1
+# name: test_rank_stations_has_sources[has_sources=cz2010]
+  tuple(
+    86,
+    15,
+  )
+# ---
+# name: test_rank_stations_has_sources[has_sources=tmy3]
+  tuple(
+    1015,
+    15,
+  )
+# ---
+# name: test_rank_stations_match_subdivision[match_subdivision without subdivision]
+  tuple(
+    2922,
+    15,
+  )
+# ---
+# name: test_rank_stations_match_subdivision[match_subdivision=True]
+  tuple(
+    202,
+    15,
+  )
+# ---
+# name: test_rank_stations_match_subdivision[site_subdivision only, no filter]
+  tuple(
+    5891,
+    15,
+  )
+# ---
+# name: test_rank_stations_match_zones_not_null[match_zones=ba_climate_zone]
+  tuple(
+    307,
+    15,
+  )
+# ---
+# name: test_rank_stations_match_zones_not_null[match_zones=ca_climate_zone]
+  tuple(
+    15,
+    15,
+  )
+# ---
+# name: test_rank_stations_match_zones_not_null[match_zones=iecc_climate_zone]
+  tuple(
+    954,
+    15,
+  )
+# ---
+# name: test_rank_stations_match_zones_not_null[match_zones=iecc_moisture_regime]
+  tuple(
+    966,
+    15,
+  )
+# ---
+# name: test_rank_stations_match_zones_null[match_zones without site zones]
+  tuple(
+    1320,
+    15,
+  )
+# ---
+# name: test_rank_stations_max_difference_elevation_meters[max_difference_elevation_meters=200]
+  tuple(
+    5891,
+    15,
+  )
+# ---
+# name: test_rank_stations_max_difference_elevation_meters[site_elevation=0, max_difference_elevation_meters=200]
+  tuple(
+    2901,
+    15,
+  )
+# ---
+# name: test_rank_stations_max_difference_elevation_meters[site_elevation=0, max_difference_elevation_meters=50]
+  tuple(
+    1566,
+    15,
+  )
+# ---
+# name: test_rank_stations_max_difference_elevation_meters[site_elevation=1000, max_difference_elevation_meters=50]
+  tuple(
+    70,
+    15,
+  )
+# ---
+# name: test_rank_stations_max_distance_meters[max_distance_meters=200000]
+  tuple(
+    70,
+    15,
+  )
+# ---
+# name: test_rank_stations_max_distance_meters[max_distance_meters=50000]
+  tuple(
+    6,
+    15,
+  )
+# ---
+# name: test_rank_stations_minimum_quality[minimum_quality=high]
+  tuple(
+    2360,
+    15,
+  )
+# ---
+# name: test_rank_stations_minimum_quality[minimum_quality=low]
+  tuple(
+    5891,
+    15,
+  )
+# ---
+# name: test_rank_stations_minimum_quality[minimum_quality=medium]
+  tuple(
+    2861,
+    15,
+  )
+# ---
+# name: test_rank_stations_no_filter
+  tuple(
+    5891,
+    15,
+  )
+# ---
+# name: test_select_station_with_empty_tempC
+  'USW00023110'
+# ---
+# name: test_select_station_with_second_level_dates
+  'USW00023110'
+# ---

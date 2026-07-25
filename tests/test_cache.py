@@ -1,25 +1,7 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-"""
-
-Copyright 2018-2023 OpenEEmeter contributors
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
-"""
 import tempfile
-from eeweather.cache import KeyValueStore
-from datetime import datetime, timezone
+
+from eeweather.cache import KeyValueStore, _expired, key_value_store_proxy, set_path
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -76,3 +58,54 @@ def test_key_value_store_clear_single_key(s):
 def test_key_value_store_rejects_non_sqlite_url():
     with pytest.raises(ValueError, match="sqlite:///"):
         KeyValueStore("postgresql://user@host/db")
+
+
+def test_set_cache_path_points_shared_store(tmp_path):
+    original = key_value_store_proxy._store
+    try:
+        path = "{}/custom.db".format(tmp_path)
+        set_path(path)
+        store = key_value_store_proxy.get_store()
+        assert store.url == "sqlite:///{}".format(path)
+        store.save_json("k", {"a": 1})
+        assert key_value_store_proxy.get_store().retrieve_json("k") == {"a": 1}
+    finally:
+        key_value_store_proxy._store = original
+
+
+def test_expired_when_never_updated():
+    assert _expired(None, 2020) is True
+
+
+def test_not_expired_when_updated_after_data_year():
+    # data from a completed year never expires once publication settles
+    last_updated = datetime(2021, 6, 1, tzinfo=timezone.utc)
+
+    assert _expired(last_updated, 2020) is False
+
+
+def test_expired_when_updated_within_the_year_end_grace_window():
+    # a year cached days after it ends is still incomplete upstream
+    last_updated = datetime(2021, 1, 2, tzinfo=timezone.utc)
+
+    assert _expired(last_updated, 2020) is True
+
+
+def test_not_expired_when_updated_after_the_grace_window():
+    last_updated = datetime(2021, 1, 20, tzinfo=timezone.utc)
+
+    assert _expired(last_updated, 2020) is False
+
+
+def test_expired_when_updated_during_data_year_and_old():
+    now = datetime.now(timezone.utc)
+    last_updated = now - timedelta(days=2)
+
+    assert _expired(last_updated, last_updated.year) is True
+
+
+def test_not_expired_when_updated_during_data_year_and_fresh():
+    now = datetime.now(timezone.utc)
+    last_updated = now - timedelta(hours=1)
+
+    assert _expired(last_updated, last_updated.year) is False
