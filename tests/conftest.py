@@ -1,29 +1,14 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-"""
-
-Copyright 2018-2023 OpenEEmeter contributors
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
-"""
 import gzip
+import os
 import re
 import tempfile
 
 from pathlib import Path
 
 import pytest
+
+
+os.environ["EEWEATHER_AUTO_UPDATE"] = "0"
 
 from eeweather.cache import KeyValueStore
 
@@ -69,7 +54,10 @@ def mock_api_transport(monkeypatch):
 
         return MockAccessAPIResponse(text)
 
-    monkeypatch.setattr("eeweather.sources.ghcnh.requests.get", mock_get)
+    def mock_session_get(url, params=None, **kwargs):
+        return mock_get(url, params=params, **kwargs)
+
+    monkeypatch.setattr("eeweather.sources.ghcnh.source._get", mock_session_get)
 
 
 def _fixture_ascii(name):
@@ -99,3 +87,28 @@ class MockKeyValueStoreProxy:
 
     def get_store(self):
         return self.store
+
+
+@pytest.fixture
+def monkeypatch_key_value_store(monkeypatch):
+    """A fresh temporary cache store patched into the shared proxy."""
+    key_value_store_proxy = MockKeyValueStoreProxy()
+    monkeypatch.setattr(
+        "eeweather.cache.key_value_store_proxy", key_value_store_proxy
+    )
+
+    return key_value_store_proxy.get_store()
+
+
+@pytest.fixture
+def monkeypatch_tmy3_request(monkeypatch):
+    monkeypatch.setattr(
+        "eeweather.sources.base.request_text", mock_request_text_tmy3
+    )
+
+
+@pytest.fixture
+def monkeypatch_cz2010_request(monkeypatch):
+    monkeypatch.setattr(
+        "eeweather.sources.base.request_text", mock_request_text_cz2010
+    )
