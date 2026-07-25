@@ -1,22 +1,23 @@
-FROM python:3.12-bookworm
+# syntax=docker/dockerfile:1.7
+FROM python:3.12-slim AS app
 
-RUN apt-get update \
-  && apt-get install -yqq \
-    # sphinxcontrib-spelling dependency
-    libenchant-2-dev \
-    # geo libraries
-    binutils libproj-dev gdal-bin libgeos-dev \
-    # unzip for rebuilding metadata.db
-    unzip \
-    # node for mapshaper
-    nodejs npm \
-    # for access to metadata.db
-    sqlite3 libsqlite3-dev
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g mapshaper
+# uv (fast installer)
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-COPY pyproject.toml README.md LICENSE /app/
-COPY eeweather/ /app/eeweather
-RUN set -ex && pip install -e /app[dev]
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy \
+    PYTHONUNBUFFERED=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 
 WORKDIR /app
+
+# deps layer (cacheable): resolve and install dependencies only
+COPY pyproject.toml README.md LICENSE /app/
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip compile pyproject.toml --extra dev -o /tmp/requirements.txt && \
+    uv pip install --system -r /tmp/requirements.txt
+
+COPY eeweather/ /app/eeweather
+RUN uv pip install --system --no-deps -e /app

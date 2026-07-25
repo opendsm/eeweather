@@ -1,0 +1,52 @@
+name: Live-source canary
+
+# The test suite runs fully offline against captured payloads, so upstream
+# format or availability changes are invisible to CI. This canary hits the
+# real services on a schedule and fails loudly when they drift.
+
+on:
+  schedule:
+    - cron: "0 5 8 * *"
+  workflow_dispatch:
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install package
+        run: pip install -e .
+      - name: Fetch live observations and validate shape
+        run: |
+          python - << 'PY'
+          from eeweather.sources.ghcnh.source import GHCNhSource
+          from eeweather.build.refresh import STATION_LIST_URL, INVENTORY_URL
+          import requests
+
+          # one real station-year through the live NCEI api
+          df = GHCNhSource().fetch_year(
+              "USW00023234", 2024, ("temperature", "relative_humidity")
+          )
+          assert len(df) > 8000, "unexpectedly sparse response: {} rows".format(len(df))
+          assert list(df.columns) == ["temperature", "relative_humidity"]
+          mean = float(df.temperature.mean())
+          assert 5 < mean < 25, "implausible SFO mean temperature: {}".format(mean)
+
+          # refresh inputs
+          for url in (STATION_LIST_URL, INVENTORY_URL):
+              response = requests.get(url, stream=True, timeout=120)
+              response.raise_for_status()
+
+          # one archive file per normals source
+          from eeweather.sources.tmy3.source import TMY3Source
+          from eeweather.sources.cz2010.source import CZ2010Source
+          for source in (TMY3Source(), CZ2010Source()):
+              ts = source.fetch("USW00023152")
+              assert len(ts) == 8760, "{}: unexpected typical year length".format(
+                  source.name
+              )
+          print("canary green")
+          PY

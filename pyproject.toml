@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "eeweather"
 dynamic = ["version"]
-description = "Weather station wrangling for EEmeter"
+description = "Obtain weather station data for OpenDSM"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
@@ -20,10 +20,10 @@ classifiers = [
 ]
 
 dependencies = [
-  "click",
-  "pandas>=1.0.0",
+  "numpy",
+  "pandas>=2.2",
+  "platformdirs",
   "pyproj>=1.9.6",
-  "pytz",
   "requests",
   "shapely",
 ]
@@ -33,14 +33,13 @@ dev = [
   "black",
   "coverage",
   "pytest",
+  "pytz",
   "pytest-cov",
   "pytest-xdist",
+  "ruff",
   "syrupy>=5,<6",
   "tox",
 ]
-
-[project.scripts]
-eeweather = "eeweather.cli:cli"
 
 [project.urls]
 Homepage = "https://github.com/opendsm/eeweather"
@@ -64,12 +63,20 @@ addopts = [
 filterwarnings = [
   "error",
 ]
+# pytest's default norecursedirs includes "build", which would silently
+# skip tests/build/; keep the rest of the defaults
+norecursedirs = [".*", "*.egg", "dist", "venv"]
+
+[tool.ruff.lint]
+# logic checks only; the project is deliberately not auto-formatted
+select = ["F"]
 
 [tool.coverage.run]
 omit = [
   ".tox/*",
-  # metadata-db rebuild code; runs against live primary sources, not unit-testable
-  "eeweather/database.py",
+  # registry maintenance runs against live primary sources or the packaged
+  # database of a previous schema; not unit-testable
+  "eeweather/build/*",
 ]
 
 [tool.coverage.report]
@@ -78,6 +85,5 @@ exclude_lines = [
   "if __name__ == .__main__.:",
   "raise NotImplementedError",
 ]
-# Conservative floor for `tox -e coverage`. Raise it as test coverage is
-# added. The full suite measures 95.3%.
-fail_under = 94
+# Floor for `tox -e coverage`; the full suite measures 98.2%.
+fail_under = 97

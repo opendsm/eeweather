@@ -1,8 +1,7 @@
-version: '3'
 services:
   shell:
     build: .
-    image: eeweather_shell
+    image: eeweather
     stdin_open: true
     tty: true
     entrypoint: /bin/sh
@@ -10,26 +9,14 @@ services:
       - .:/app
 
   test:
-    image: eeweather_shell
+    image: eeweather
     entrypoint: py.test -n0
     volumes:
       - .:/app
       - /app/tests/__pycache__/
 
-  eeweather:
-    image: eeweather_shell
-    entrypoint: eeweather
-    volumes:
-      - .:/app
-
-  python:
-    image: eeweather_shell
-    entrypoint: python
-    volumes:
-      - .:/app
-
-  blacken:
-    image: eeweather_shell
-    entrypoint: black .
+  uv:
+    image: eeweather
+    entrypoint: uv
     volumes:
       - .:/app

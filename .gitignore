@@ -10,7 +10,7 @@ __pycache__/
 _build/
 
 # packaging and distribution
-build/
+/build/
 dist/
 
 # coverage

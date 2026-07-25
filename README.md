@@ -1,61 +1,71 @@
-# EEweather: Weather station wrangling for EEmeter
+# EEweather: Weather for energy-efficiency modeling
 
 [![License](https://img.shields.io/github/license/opendsm/eeweather.svg)](https://github.com/opendsm/eeweather)
 [![PyPI Version](https://img.shields.io/pypi/v/eeweather.svg)](https://pypi.python.org/pypi/eeweather)
 
 ---
 
-**EEweather** — tools for matching to and fetching data from NCEI GHCNh, TMY3, or CZ2010 weather stations.
+**EEweather** answers "what was the weather here?" — it matches locations to
+weather stations, fetches observed and typical-year data, and returns
+analysis-ready frames with warnings and provenance.
 
-EEweather comes with a database of weather station metadata, ZCTA metadata, and GIS data that makes it easier to find the right weather station to use for a particular ZIP code or lat/long coordinate.
-
-[Documentation lives at opendsm.energy.](https://opendsm.energy)
+Documentation lives in [docs/](docs/) (publishing to
+[opendsm.energy](https://opendsm.energy)).
 
 ## Usage
 
 ```python
-import datetime
+from datetime import datetime, timezone
+
 import eeweather
 
-station = eeweather.WeatherStation("722880")
+location = eeweather.WeatherLocation(34.2, -118.4)   # or .from_place("zcta", "91104")
+df, warnings = location.load_data(
+    datetime(2024, 1, 1, tzinfo=timezone.utc),
+    datetime(2024, 12, 31, tzinfo=timezone.utc),
+)
+location.provenance     # which station served each variable, and how far away
+
+saved = location.to_json()  # coordinates, sources, and the stations resolved at load
+location = eeweather.WeatherLocation.from_json(saved)  # later loads (e.g. a reporting
+                                                       # period) reuse the same stations
+
+station = eeweather.WeatherStation("USW00023152")     # or by registry id
+station = eeweather.WeatherStation.from_usaf("722880")  # or by historical ids
 df, warnings = station.load_data(
-    datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc),
-    datetime.datetime(2024, 12, 31, tzinfo=datetime.timezone.utc),
-    frequency="hourly",
-    variables=("temperature",),
+    datetime(2024, 1, 1, tzinfo=timezone.utc),
+    datetime(2024, 12, 31, tzinfo=timezone.utc),
+    variables=("temperature", "relative_humidity"),
+)
+typical, _ = station.load_data(
+    datetime(2024, 1, 1, tzinfo=timezone.utc),
+    datetime(2024, 12, 31, tzinfo=timezone.utc),
+    source="tmy3",                                    # typical-year data by explicit pin
 )
 ```
 
 ## Installation
 
-EEweather is a python package and can be installed with pip.
-
 ```
 $ pip install eeweather
 ```
 
-## Supported Sources of Weather Data
-
-- NOAA Global Historical Climatology Network hourly (GHCNh)
-- NREL Typical Meteorological Year 3 (TMY3)
-- California Energy Commission 1998-2009 Weather Normals (CZ2010)
-
 ## Features
 
-- Match by ZIP code (ZCTA) or by lat/long coordinates
-- Use user-supplied weather station mappings
-- Match within climate zones
-  - IECC Climate Zones
-  - IECC Moisture Regimes
-  - Building America Climate Zones
-  - California Building Climate Zone Areas
-- User-friendly SQLite database of metadata compiled from primary sources
-  - US Census Bureau (ZCTAs, county shapefiles)
-  - Building America climate zone county lists
-  - NOAA NCEI Integrated Surface Database Station History
-  - NOAA GHCNh station list
-  - NREL TMY3 site
-- Plot maps of outputs
+- One loading verb over pluggable sources: GHCNh observations (NOAA), TMY3
+  (NREL) and CZ2010 (CEC) typical years; every load returns an aligned UTC
+  frame plus data-quality warnings and per-source provenance
+- A packaged station registry with opaque ids and identifier translation
+  (USAF, WBAN, ICAO), precomputed climate-zone assignments (IECC, Building
+  America, California), ZCTA place codes, and per-source observation
+  inventory
+- Station matching: ranked candidates for any point with zone, quality,
+  distance, and availability filters (`location.candidates()`), plus
+  data-sufficiency selection
+- Extension protocols for custom data: station-keyed feeds (e.g. a BigQuery
+  table keyed by any translatable id system) and location-keyed gridded
+  sources
+- A shared sqlite weather cache (`eeweather.cache.set_path`/`clear`)
 
 ## Contributing
 
@@ -79,33 +89,38 @@ Run tests on multiple python versions:
 $ tox
 ```
 
-## Use with Docker
-
-To use with docker-compose, use the following:
-
-Run a tutorial notebook (copy link w/ token, open tutorial.ipynb):
+Or with Docker:
 
 ```
-$ docker-compose up jupyter
+$ docker compose run --rm test
 ```
 
-Open a shell:
+## Registry updates
+
+The packaged registry (GHCNh station list, observation inventory, quality
+ratings, identifier aliases) keeps itself current: when the live data is
+more than six months old, loading data starts a background update into
+the platform user data directory, and those copies take precedence over
+the wheel's in new processes. Updates download the ready-made files a
+scheduled workflow publishes to the repository's rolling release
+(CDN-served, so any number of clients costs NOAA nothing and no client
+rebuilds locally) and fall back to rebuilding directly from the live
+NOAA files when that channel is unreachable or stale, so they keep
+working even if the repository goes dormant. Concurrent workers on a
+machine coordinate through an atomic claim file (one attempt per day,
+however many race), and the update thread waits a minute before touching
+the network, so short-lived pipeline workers exit without generating
+traffic. Set `EEWEATHER_AUTO_UPDATE=0` to suppress the traffic entirely,
+or manage it directly with:
 
 ```
-$ docker-compose run --rm shell
+$ python -m eeweather.registry.update           # refresh on demand
+$ python -m eeweather.registry.update --clear   # revert to packaged data
 ```
 
-Run tests:
-
-```
-$ docker-compose run --rm test
-```
-
-Run the CLI:
-
-```
-$ docker-compose run --rm eeweather --help
-```
+A scheduled workflow runs the same refresh monthly and opens a pull
+request so the wheel's snapshot stays current; maintainers can rebuild
+all packaged data with `python -m eeweather.build`.
 
 ## Notice Regarding CZ2010 Data
 
@@ -115,11 +130,3 @@ The non-U.S. data cannot be redistributed for commercial purposes.
 Re-distribution of these data by others must provide this same notification.
 
 See [further explanation](http://weather.whiteboxtechnologies.com/faq#Q12/) here.
-
-## Metadata Yearly Updates
-
-Every year, the metadata database needs to be updated. This can be done by running:
-
-```
-docker-compose run --rm eeweather rebuild-db
-```
