@@ -161,6 +161,15 @@ This release is a redesign; the public API is not compatible with 0.3.x.
   which numpy 2.5 deprecates; under ``filterwarnings = ["error"]`` that
   failed every coarser- and finer-than-hourly resample path. pandas 3.0
   fixes it upstream, so this only affects pandas 2.x.
+* Geography packs are refreshed from the Census Gazetteer and are part
+  of the updatable set, so a rebuilt pack reaches installed clients. They
+  had been excluded on the grounds that geography is static, which is
+  false: Census redrew the ZCTA boundaries for 2020 and republishes
+  annually, and the packaged pack was built from the 2010 definition.
+* Provenance records ``registry_vintage``, the ``refreshed_at`` stamp of
+  the registry a request resolved against, so a result is reproducible by
+  record rather than only by code.
+
 0.3.29
 ------
 
