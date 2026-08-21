@@ -2,6 +2,8 @@ import gzip
 from pathlib import Path
 
 import pytest
+
+from eeweather.exceptions import FetchError
 import requests
 
 from eeweather.sources.ghcnh import GHCNhSource
@@ -64,9 +66,14 @@ def test_fetch_year_retries_connection_errors_with_backoff(monkeypatch, no_sleep
 
     monkeypatch.setattr("eeweather.sources.ghcnh.source._get", failing_get)
 
-    with pytest.raises(requests.ConnectionError):
+    # a transport failure surfaces as FetchError, not a raw requests error
+    with pytest.raises(FetchError) as excinfo:
         GHCNhSource().fetch_year("USW00093134", 2007, ("temperature",))
 
+    assert isinstance(excinfo.value.cause, requests.ConnectionError)
+    assert excinfo.value.station_id == "USW00093134"
+    assert excinfo.value.year == 2007
+    assert excinfo.value.status_code is None
     assert len(calls) == API_REQUEST_TRIES
     # backs off between attempts, not after the final failure
     assert len(no_sleep) == API_REQUEST_TRIES - 1
@@ -104,9 +111,10 @@ def test_fetch_year_client_errors_raise_immediately(monkeypatch, no_sleep):
 
     monkeypatch.setattr("eeweather.sources.ghcnh.source._get", not_found_get)
 
-    with pytest.raises(requests.HTTPError):
+    with pytest.raises(FetchError) as excinfo:
         GHCNhSource().fetch_year("USW00093134", 2007, ("temperature",))
 
+    assert excinfo.value.status_code == 404
     assert len(calls) == 1
     assert no_sleep == []
 

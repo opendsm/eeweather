@@ -100,6 +100,46 @@ class DataNotAvailableError(EEWeatherError):
         self.year = year
 
 
+class FetchError(EEWeatherError):
+    """Raised when a source could not retrieve data over the network.
+
+    Transport failures used to escape as raw ``requests`` exceptions, so a
+    caller had to import ``requests`` to catch them -- and no exception is
+    exported at the top level, so it had to know the submodule too. This
+    distinguishes "the network failed" from "the data does not exist"
+    (:class:`DataNotAvailableError`), which is the difference between a
+    request worth retrying and one that never will be.
+
+    Attributes
+    ----------
+    source : str
+        the source whose fetch failed
+    station_id : str or None
+        the station requested; None for non-station sources
+    year : int or None
+        the year requested; None when the failure was not year-scoped
+    """
+
+    def __init__(self, source, *, station_id=None, year=None, cause=None):
+        super().__init__(
+            "Could not fetch {} data for station={} year={}: {}".format(
+                source, station_id, year, cause
+            )
+        )
+        self.source = source
+        self.station_id = station_id
+        self.year = year
+        self.cause = cause
+
+    @property
+    def status_code(self):
+        """The HTTP status that caused this, or None if the request never
+        got a response (a timeout or a connection error)."""
+        response = getattr(self.cause, "response", None)
+
+        return None if response is None else response.status_code
+
+
 class NoQualifiedStationError(EEWeatherError):
     """Raised when no station in the registry qualifies to estimate weather
     at a location under the configured filters.

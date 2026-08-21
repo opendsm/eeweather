@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 import requests
 
-from eeweather.exceptions import DataNotAvailableError
+from eeweather.exceptions import DataNotAvailableError, FetchError
 from eeweather.sources.cz2010 import CZ2010Source
 from eeweather.sources.tmy3 import TMY3Source
 
@@ -112,7 +112,11 @@ def test_archive_fetch_client_error_raises_immediately(monkeypatch):
 
     monkeypatch.setattr("eeweather.sources.base.requests.get", forbidden_get)
 
-    with pytest.raises(requests.HTTPError):
+    # a non-404 transport failure surfaces as FetchError; only a 404 means
+    # "this station has no archive file", i.e. DataNotAvailableError
+    with pytest.raises(FetchError) as excinfo:
         TMY3Source().fetch("USW00023152")
+
+    assert excinfo.value.status_code == 403
 
     assert len(calls) == 1

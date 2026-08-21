@@ -7,6 +7,8 @@ import requests
 
 from ..base import Feed
 
+from ...exceptions import FetchError
+
 
 
 API_URL = "https://www.ncei.noaa.gov/access/services/data/v1"
@@ -72,13 +74,17 @@ class GHCNhSource(Feed):
             try:
                 resp = _get(API_URL, params)
                 resp.raise_for_status()
-            except requests.HTTPError:
+            except requests.HTTPError as error:
                 if resp.status_code < 500 or attempt == API_REQUEST_TRIES - 1:
-                    raise
+                    raise FetchError(
+                        self.name, station_id=external_id, year=year, cause=error
+                    ) from error
                 time.sleep(API_RETRY_BACKOFF_SECONDS * (attempt + 1))
-            except requests.RequestException:
+            except requests.RequestException as error:
                 if attempt == API_REQUEST_TRIES - 1:
-                    raise
+                    raise FetchError(
+                        self.name, station_id=external_id, year=year, cause=error
+                    ) from error
                 time.sleep(API_RETRY_BACKOFF_SECONDS * (attempt + 1))
             else:
                 break

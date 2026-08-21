@@ -11,7 +11,11 @@ import requests
 
 from ...__version__ import __version__
 from ...cache import CacheVolatility
-from ...exceptions import DataNotAvailableError, EEWeatherWarning
+from ...exceptions import (
+    DataNotAvailableError,
+    EEWeatherWarning,
+    FetchError,
+)
 from ..base import Provenance, Source
 from ..pipeline import (
     align_to_range,
@@ -226,7 +230,13 @@ def _request(latitude, longitude, start, end, parameters):
     }
 
     for attempt in range(API_REQUEST_TRIES):
-        response = _get(API_URL, params)
+        try:
+            response = _get(API_URL, params)
+        except requests.RequestException as error:
+            if attempt == API_REQUEST_TRIES - 1:
+                raise FetchError("nasa-power", cause=error) from error
+            time.sleep(API_RETRY_BACKOFF_SECONDS * (attempt + 1))
+            continue
         if not _retryable(response.status_code) or attempt == API_REQUEST_TRIES - 1:
             break
         time.sleep(_retry_delay(response, attempt))
