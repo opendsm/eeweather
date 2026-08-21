@@ -58,13 +58,29 @@ Attachment = namedtuple(
 )
 
 
-def _geography_packs():
+def packaged_geography_packs():
+    """The geography packs shipped inside the wheel, as (alias, path).
+
+    The packaged paths, not the live ones -- the updater needs to know
+    what a downloaded pack would replace.
+    """
     packs = []
     for path in sorted(glob.glob(os.path.join(_REGISTRY_DIR, "geography_*.db"))):
         alias = os.path.splitext(os.path.basename(path))[0]
         packs.append((alias, path))
 
     return packs
+
+
+def _geography_packs():
+    """The geography packs to read, as (alias, path).
+
+    Routed through data_path so a downloaded pack is served in preference
+    to the packaged one. Before geography joined the updatable set this
+    read the packaged directory directly, which meant a refreshed pack
+    could be installed and then silently ignored.
+    """
+    return [(alias, data_path(path)) for alias, path in packaged_geography_packs()]
 
 
 class MetadataDBConnectionProxy(object):

@@ -9,8 +9,9 @@ so any number of clients updating costs NOAA nothing and no client
 rebuilds locally. When the channel is unreachable, stale, or no newer
 than the local data, the update falls back to rebuilding from the live
 NOAA files directly, so updates keep working even if the repository goes
-dormant. Static content (geography packs, archive station lists) never
-changes and is not part of the update. Implausible files from either
+dormant. Geography packs are refreshed from Census on their own annual
+cadence and a published pack may omit them; archive station lists are
+static and are not part of the update. Implausible files from either
 channel abort an update, leaving the previous data in place.
 
 Updates run automatically: loading data or ranking stations starts a
@@ -40,6 +41,7 @@ from .db import (
     PACKAGED_IDENTIFIERS_DB_PATH,
     UPDATED_DATA_DIR,
     data_path,
+    packaged_geography_packs,
 )
 
 
@@ -48,6 +50,17 @@ UPDATABLE = {
     "ghcnh.db": PACKAGED_GHCNH_DB_PATH,
     "identifiers.db": PACKAGED_IDENTIFIERS_DB_PATH,
 }
+
+# geography is not static: Census republishes the Gazetteer annually
+GEOGRAPHY_FILENAMES = tuple(
+    os.path.basename(path) for _alias, path in packaged_geography_packs()
+)
+UPDATABLE.update(
+    {os.path.basename(path): path for _alias, path in packaged_geography_packs()}
+)
+
+# omitted from a published pack when unchanged; refresh the rest, do not abort
+OPTIONAL_IN_PACK = frozenset(GEOGRAPHY_FILENAMES)
 
 # source dbs whose meta(refreshed_at) stamp drives staleness; a db not
 # listed here (e.g. identifiers.db, which carries no meta table) never
@@ -70,6 +83,7 @@ _FLOOR_TABLES = {
     "ghcnh.db": ("stations", "inventory"),
     "identifiers.db": ("station_identifier",),
 }
+_FLOOR_TABLES.update({filename: ("place",) for filename in GEOGRAPHY_FILENAMES})
 
 STALE_AFTER_DAYS = 183
 
@@ -243,7 +257,15 @@ def _install_published(now):
     try:
         for filename in UPDATABLE:
             stage = os.path.join(UPDATED_DATA_DIR, filename + ".download")
-            _download(RELEASE_URL.format(filename), stage)
+            try:
+                _download(RELEASE_URL.format(filename), stage)
+            except requests.HTTPError:
+                # optional file absent: keep the existing copy, refresh the rest
+                if filename not in OPTIONAL_IN_PACK:
+                    raise
+                if os.path.exists(stage):
+                    os.remove(stage)
+                continue
             staged[filename] = stage
         published = refreshed_at(staged["ghcnh.db"])
         if published is None or now - published > timedelta(days=STALE_AFTER_DAYS):

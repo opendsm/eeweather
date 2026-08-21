@@ -362,7 +362,8 @@ def test_clear_removes_updated_copies(patched_update):
 
     removed = registry_update.clear()
 
-    assert len(removed) == 2
+    # every updatable file, whatever the set is -- geography packs joined it
+    assert len(removed) == len(paths)
     assert os.listdir(directory) == []
     assert registry_update.clear() == []
 
@@ -578,3 +579,98 @@ def test_update_thread_defers_network_for_short_lived_processes(
     registry_update.maybe_update().join()
 
     assert order == [("sleep", 0.01), ("update", None)]
+
+
+# --- geography packs are updatable -----------------------------------------
+#
+# They were excluded on the grounds that geography is static. Census redrew
+# the ZCTA boundaries for 2020 and republishes the Gazetteer annually, so the
+# packaged pack -- built from the 2010 definition -- drifted fifteen years
+# without any refresh being able to correct it.
+
+
+def test_geography_packs_are_in_the_updatable_set():
+    assert registry_update.GEOGRAPHY_FILENAMES
+    for filename in registry_update.GEOGRAPHY_FILENAMES:
+        assert filename in registry_update.UPDATABLE
+        # a truncated download must not be allowed to replace the geography
+        assert registry_update._FLOOR_TABLES[filename] == ("place",)
+
+
+def test_a_downloaded_geography_pack_is_the_one_read(patched_update):
+    """The half that made geography updatable in name only.
+
+    _geography_packs globbed the packaged directory directly, so a pack
+    could be downloaded, committed, and then silently ignored on read.
+    """
+    directory, paths, _ = patched_update
+    geography = registry_update.GEOGRAPHY_FILENAMES[0]
+    os.makedirs(directory, exist_ok=True)
+    for filename, packaged in paths.items():
+        shutil.copy(packaged, os.path.join(directory, filename))
+    registry_update._write_marker()
+
+    live = dict(registry_db._geography_packs())
+    alias = os.path.splitext(geography)[0]
+
+    assert live[alias] == os.path.join(directory, geography)
+
+
+def test_published_pack_may_omit_geography(
+    patched_update, published_pack, monkeypatch
+):
+    """Geography moves annually, the station registry continuously.
+
+    A pack published without geography must refresh the rest and leave the
+    existing geography in place, rather than aborting the whole update.
+    """
+    directory, paths, _ = patched_update
+    geography = registry_update.GEOGRAPHY_FILENAMES[0]
+
+    def download_without_geography(url, dest):
+        filename = url.rsplit("/", 1)[1]
+        if filename == geography:
+            response = requests.Response()
+            response.status_code = 404
+            raise requests.HTTPError("404 Not Found", response=response)
+        shutil.copy(published_pack[filename], dest)
+
+    monkeypatch.setattr(registry_update, "_download", download_without_geography)
+    monkeypatch.setattr(
+        registry_update, "refresh",
+        lambda **kwargs: pytest.fail("rebuilt despite a usable published pack"),
+    )
+
+    summary = registry_update.update()
+
+    assert summary["channel"] == "published"
+    assert os.path.exists(os.path.join(directory, "ghcnh.db"))
+    assert not os.path.exists(os.path.join(directory, geography))
+    # nothing was installed for it, so reads fall back to the packaged pack
+    # rather than to a hole -- a previously updated pack would likewise stay
+    assert not dict(registry_db._geography_packs())[
+        os.path.splitext(geography)[0]].startswith(directory)
+
+
+def test_a_missing_required_file_still_aborts(
+    patched_update, published_pack, monkeypatch
+):
+    """Only geography is optional; a pack missing ghcnh.db is broken."""
+    def download_without_ghcnh(url, dest):
+        filename = url.rsplit("/", 1)[1]
+        if filename == "ghcnh.db":
+            response = requests.Response()
+            response.status_code = 404
+            raise requests.HTTPError("404 Not Found", response=response)
+        shutil.copy(published_pack[filename], dest)
+
+    monkeypatch.setattr(registry_update, "_download", download_without_ghcnh)
+    rebuilt = []
+    monkeypatch.setattr(
+        registry_update, "refresh",
+        lambda **kwargs: rebuilt.append(True) or {"stations": 1},
+    )
+
+    registry_update.update()
+
+    assert rebuilt, "should have fallen back to rebuilding from NOAA"

@@ -1,0 +1,314 @@
+"""Rebuild a geography pack's places from Census primary sources.
+
+The packaged ZCTA places are the **2010** ZCTA definition. They came from
+``cb_2016_us_zcta510_500k.zip`` -- ``zcta510`` is the vintage, GENZ2016 is
+only the release year -- the ad-hoc scripts that downloaded it were removed,
+and ``_migrate_places`` has copied the same rows forward ever since. Nothing
+in the pack records which vintage it is, so a result cannot be tied to the
+geography that produced it.
+
+This rebuilds the ``place`` and ``place_zone`` tables from sources Census
+still publishes annually, and stamps the vintage.
+
+Two things make it smaller than it looks. eeweather stores **no ZCTA
+geometry at all** -- a place is a point, a country, a subdivision and its
+zone assignments -- so the rebuild does not need the ZCTA cartographic
+boundary files, which Census stopped publishing after GENZ2020
+(``cb_2021_us_zcta520_500k.zip`` is a 404). And the zone assignments are
+recomputed from the pack's own ``zone`` geometries, the same geometries
+:func:`eeweather.registry.zones.zones_at` answers from at runtime.
+
+The one genuinely new piece is ``subdivision``: the Gazetteer has no state
+column, so each ZCTA's state is resolved by point-in-polygon against the
+Census state layer. That layer is a shapefile, which needs ``pyshp`` -- a
+build-only dependency (``pip install eeweather[build]``), not a runtime one.
+
+Census's internal point is also a better point than what the package
+carries. Against the 2020 ZCTA polygons, 1,833 packaged points fall outside
+their own ZCTA (median 0.46 km, worst 220 km; Ventura 93001 sits 19.18 km
+offshore) versus 42 for the Gazetteer points (worst 5.18 km).
+"""
+import io
+import json
+import os
+import sqlite3
+import zipfile
+from datetime import datetime, timezone
+
+import requests
+from shapely.geometry import Point, shape
+from shapely.prepared import prep
+from shapely.strtree import STRtree
+
+from ..registry.db import _REGISTRY_DIR
+
+
+GAZETTEER_URL = (
+    "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/"
+    "{year}_Gazetteer/{year}_Gaz_zcta_national.zip"
+)
+STATE_URL = (
+    "https://www2.census.gov/geo/tiger/GENZ{year}/shp/"
+    "cb_{year}_us_state_500k.zip"
+)
+
+REQUEST_TIMEOUT_SECONDS = 120
+
+# how many years back to probe for the newest published vintage
+VINTAGE_LOOKBACK_YEARS = 3
+
+# losing this much of the packaged count is a bad download, not a real change
+PLAUSIBILITY_FLOOR = 0.9
+
+
+def _import_shapefile():
+    try:
+        import shapefile
+    except ImportError as error:  # pragma: no cover (exercised by install shape)
+        raise ImportError(
+            "Rebuilding geography reads the Census state shapefile, which"
+            " requires the optional 'pyshp' dependency; install it with"
+            " `pip install eeweather[build]`."
+        ) from error
+
+    return shapefile
+
+
+def _get(url):
+    response = requests.get(url, timeout=REQUEST_TIMEOUT_SECONDS)
+    response.raise_for_status()
+
+    return response.content
+
+
+def _available(url):
+    response = requests.head(url, timeout=REQUEST_TIMEOUT_SECONDS)
+
+    return response.status_code == 200
+
+
+def resolve_vintage(year=None):
+    """The newest year both Census sources are published for.
+
+    Census publishes the Gazetteer and the cartographic state layer on
+    their own schedules, so the vintage is the newest year that has both.
+    """
+    if year is not None:
+        return year
+
+    this_year = datetime.now(timezone.utc).year
+    for candidate in range(this_year, this_year - VINTAGE_LOOKBACK_YEARS - 1, -1):
+        if _available(GAZETTEER_URL.format(year=candidate)) and _available(
+            STATE_URL.format(year=candidate)
+        ):
+            return candidate
+
+    raise RuntimeError(
+        "No Census vintage published for {}-{}".format(
+            this_year - VINTAGE_LOOKBACK_YEARS, this_year
+        )
+    )
+
+
+def fetch_zcta_points(year):
+    """{zcta: (latitude, longitude)} from the Census Gazetteer.
+
+    The Gazetteer's INTPTLAT/INTPTLONG is an *internal* point, constructed
+    to fall inside the area, not a geometric centroid.
+    """
+    archive = zipfile.ZipFile(io.BytesIO(_get(GAZETTEER_URL.format(year=year))))
+    name = "{}_Gaz_zcta_national.txt".format(year)
+    text = archive.read(name).decode("utf-8-sig")
+
+    lines = text.splitlines()
+    header = [field.strip() for field in lines[0].split("\t")]
+    if len(header) == 1:
+        header = [field.strip() for field in lines[0].split("|")]
+        separator = "|"
+    else:
+        separator = "\t"
+
+    geoid = header.index("GEOID")
+    latitude = header.index("INTPTLAT")
+    longitude = header.index("INTPTLONG")
+
+    points = {}
+    for line in lines[1:]:
+        if not line.strip():
+            continue
+        fields = [field.strip() for field in line.split(separator)]
+        points[fields[geoid]] = (float(fields[latitude]), float(fields[longitude]))
+
+    return points
+
+
+def fetch_state_geometries(year):
+    """[(subdivision, geometry)] from the Census cartographic state layer."""
+    shapefile = _import_shapefile()
+    archive = zipfile.ZipFile(io.BytesIO(_get(STATE_URL.format(year=year))))
+    base = "cb_{}_us_state_500k".format(year)
+    reader = shapefile.Reader(
+        shp=io.BytesIO(archive.read(base + ".shp")),
+        dbf=io.BytesIO(archive.read(base + ".dbf")),
+        shx=io.BytesIO(archive.read(base + ".shx")),
+    )
+
+    fields = [field[0] for field in reader.fields[1:]]
+    abbreviation = fields.index("STUSPS")
+
+    states = []
+    for record, geometry in zip(reader.records(), reader.shapes()):
+        states.append(
+            (record[abbreviation], shape(geometry.__geo_interface__))
+        )
+
+    return states
+
+
+# the 500k boundaries are generalized, so an island ZCTA's internal point
+# can sit just off its own coastline -- 04108 Peaks Island, 11957 Orient.
+# Roughly 5 km here; far too small to reach another state.
+NEAREST_TOLERANCE_DEGREES = 0.05
+
+
+def _assign(points, features, tolerance=None):
+    """{code: value} for every point falling inside a feature's geometry.
+
+    Point-in-polygon over tens of thousands of points needs an index and
+    prepared geometries; without them this is minutes rather than seconds.
+
+    With a ``tolerance``, a point inside nothing falls back to the nearest
+    feature within that distance, in degrees.
+    """
+    if not features:
+        return {}
+
+    geometries = [geometry for _, geometry in features]
+    values = [value for value, _ in features]
+    prepared = [prep(geometry) for geometry in geometries]
+    tree = STRtree(geometries)
+
+    assigned = {}
+    unplaced = []
+    for code, (latitude, longitude) in points.items():
+        point = Point(longitude, latitude)
+        for index in tree.query(point):
+            if prepared[index].contains(point):
+                assigned[code] = values[index]
+                break
+        else:
+            unplaced.append((code, point))
+
+    if tolerance is not None:
+        for code, point in unplaced:
+            index = tree.nearest(point)
+            if geometries[index].distance(point) <= tolerance:
+                assigned[code] = values[index]
+
+    return assigned
+
+
+def _zone_features(geography):
+    """[(system, zone_id, geometry)] from the pack's own zone table."""
+    features = []
+    for system, zone_id, geometry in geography.execute(
+        "select system, zone_id, geometry from zone order by system, zone_id"
+    ):
+        features.append((system, zone_id, shape(json.loads(geometry))))
+
+    return features
+
+
+def _stamp_vintage(geography, year, source):
+    geography.execute(
+        "create table if not exists meta (key text primary key, value text)"
+        " without rowid"
+    )
+    for key, value in (
+        ("place_vintage", str(year)),
+        ("place_source", source),
+        # the key registry.update.refreshed_at reads; geography is part of
+        # the updatable set, so it is stamped the same way the station
+        # registry is rather than under a name only this module knows
+        ("refreshed_at", datetime.now(timezone.utc).strftime("%Y-%m-%d")),
+    ):
+        geography.execute("insert or replace into meta values (?, ?)", (key, value))
+
+
+def _plausible_or_raise(geography, points):
+    existing = geography.execute(
+        "select count(*) from place where kind = 'zcta'"
+    ).fetchone()[0]
+    if existing and len(points) < existing * PLAUSIBILITY_FLOOR:
+        raise RuntimeError(
+            "Census Gazetteer returned {} ZCTAs against {} packaged;"
+            " refusing to replace packaged geography with a partial"
+            " download.".format(len(points), existing)
+        )
+
+
+def build_places(year=None, geography_path=None):
+    """Rebuild the ZCTA places of a geography pack from Census sources.
+
+    Replaces the ``place`` and ``place_zone`` rows for ``kind='zcta'`` and
+    stamps the vintage in ``meta``. Zone geometries are never touched --
+    they are static content this does not have a primary source for.
+
+    Returns a dict of row counts.
+    """
+    if geography_path is None:
+        geography_path = os.path.join(_REGISTRY_DIR, "geography_us.db")
+
+    year = resolve_vintage(year)
+    points = fetch_zcta_points(year)
+    states = fetch_state_geometries(year)
+
+    with sqlite3.connect(geography_path) as geography:
+        _plausible_or_raise(geography, points)
+
+        subdivisions = _assign(
+            points, states, tolerance=NEAREST_TOLERANCE_DEGREES
+        )
+
+        zone_features = _zone_features(geography)
+        by_system = {}
+        for system, zone_id, geometry in zone_features:
+            by_system.setdefault(system, []).append((zone_id, geometry))
+        zones_by_code = {}
+        for system, features in by_system.items():
+            for code, zone_id in _assign(points, features).items():
+                zones_by_code.setdefault(code, {})[system] = zone_id
+
+        geography.execute("delete from place where kind = 'zcta'")
+        geography.execute("delete from place_zone where kind = 'zcta'")
+        geography.executemany(
+            "insert into place values ('zcta', ?, 'US', ?, ?, ?)",
+            [
+                (code, subdivisions.get(code), latitude, longitude)
+                for code, (latitude, longitude) in sorted(points.items())
+            ],
+        )
+        geography.executemany(
+            "insert into place_zone values ('zcta', ?, ?, ?)",
+            [
+                (code, system, zone_id)
+                for code in sorted(zones_by_code)
+                for system, zone_id in sorted(zones_by_code[code].items())
+            ],
+        )
+        _stamp_vintage(geography, year, "census-gazetteer")
+
+        counts = {
+            "vintage": year,
+            "place": geography.execute(
+                "select count(*) from place where kind = 'zcta'"
+            ).fetchone()[0],
+            "place_zone": geography.execute(
+                "select count(*) from place_zone where kind = 'zcta'"
+            ).fetchone()[0],
+            "without_subdivision": sum(
+                1 for code in points if subdivisions.get(code) is None
+            ),
+        }
+
+    return counts
