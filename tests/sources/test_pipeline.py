@@ -6,6 +6,8 @@ from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 import pytest
+
+from eeweather.exceptions import FetchError
 import pytz
 
 from eeweather.cache import CacheVolatility
@@ -536,3 +538,78 @@ def test_data_gap_warnings_empty_series_is_silent():
     ts = pd.Series([], dtype=float, index=pd.DatetimeIndex([], tz="UTC"))
 
     assert data_gap_warnings(ts, "ghcnh", "temperature") == []
+
+
+def _stale_2007_block(store):
+    """A cached 2007 block old enough to want refreshing.
+
+    A past year is only refreshable when the source says its tail may still
+    be arriving, which is what LATE_PUBLISHING plus a missing tail means.
+    """
+    partial = _hourly_frame("2007-12-01", "2007-12-31 23:00", value=11.0)
+    partial.iloc[-240:] = float("nan")
+    _cache_block(store, partial, days_ago=2)
+
+
+def test_load_year_serves_stale_data_when_the_fetch_fails(
+    monkeypatch_key_value_store
+):
+    """A stale entry that answers the request beats no data at all: the
+    values are real, only their freshness is in doubt."""
+    _stale_2007_block(monkeypatch_key_value_store)
+
+    def failing_fetch(variables):
+        raise FetchError("ghcnh", station_id=STATION, year=2007)
+
+    df = load_year(
+        CACHE_KEY, 2007, ("temperature",), failing_fetch, True,
+        True, True, True, LATE_PUBLISHING,
+    )
+
+    assert df is not None
+    assert list(df.columns) == ["temperature"]
+    assert df.temperature.notna().any()
+
+
+def test_load_year_reraises_fetch_error_when_nothing_is_cached(
+    monkeypatch_key_value_store
+):
+    def failing_fetch(variables):
+        raise FetchError("ghcnh", station_id=STATION, year=2007)
+
+    with pytest.raises(FetchError):
+        load_year(
+            CACHE_KEY, 2007, ("temperature",), failing_fetch, True,
+            True, True, True, LATE_PUBLISHING,
+        )
+
+
+def test_load_year_reraises_when_the_stale_block_lacks_a_variable(
+    monkeypatch_key_value_store
+):
+    _stale_2007_block(monkeypatch_key_value_store)
+
+    def failing_fetch(variables):
+        raise FetchError("ghcnh", station_id=STATION, year=2007)
+
+    with pytest.raises(FetchError):
+        load_year(
+            CACHE_KEY, 2007, ("temperature", "wind_speed"), failing_fetch, True,
+            True, True, True, LATE_PUBLISHING,
+        )
+
+
+def test_load_year_does_not_swallow_a_non_transport_failure(
+    monkeypatch_key_value_store
+):
+    """Only FetchError degrades; a malformed response still raises."""
+    _stale_2007_block(monkeypatch_key_value_store)
+
+    def malformed_fetch(variables):
+        raise ValueError("non-csv body")
+
+    with pytest.raises(ValueError):
+        load_year(
+            CACHE_KEY, 2007, ("temperature",), malformed_fetch, True,
+            True, True, True, LATE_PUBLISHING,
+        )
