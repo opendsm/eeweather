@@ -34,7 +34,7 @@ class MockResponse:
 @pytest.fixture
 def no_sleep(monkeypatch):
     sleeps = []
-    monkeypatch.setattr("eeweather.sources.ghcnh.source.time.sleep", sleeps.append)
+    monkeypatch.setattr("eeweather.sources.budget.time.sleep", sleeps.append)
 
     return sleeps
 

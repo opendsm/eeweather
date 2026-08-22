@@ -1,10 +1,10 @@
 """The GHCNh observation source served through the NCEI access API."""
 import io
-import time
 
 import pandas as pd
 import requests
 
+from .. import budget
 from ..base import Feed
 
 from ...exceptions import FetchError
@@ -26,7 +26,9 @@ _session = requests.Session()
 
 
 def _get(url, params):  # pragma: no cover (mocked in tests via this seam)
-    return _session.get(url=url, params=params, timeout=API_TIMEOUT_SECONDS)
+    return _session.get(
+        url=url, params=params, timeout=budget.timeout_for(API_TIMEOUT_SECONDS)
+    )
 
 
 class GHCNhSource(Feed):
@@ -71,6 +73,7 @@ class GHCNhSource(Feed):
         }
 
         for attempt in range(API_REQUEST_TRIES):
+            budget.check("{} {}".format(external_id, year))
             try:
                 resp = _get(API_URL, params)
                 resp.raise_for_status()
@@ -79,13 +82,13 @@ class GHCNhSource(Feed):
                     raise FetchError(
                         self.name, station_id=external_id, year=year, cause=error
                     ) from error
-                time.sleep(API_RETRY_BACKOFF_SECONDS * (attempt + 1))
+                budget.sleep_within(API_RETRY_BACKOFF_SECONDS * (attempt + 1))
             except requests.RequestException as error:
                 if attempt == API_REQUEST_TRIES - 1:
                     raise FetchError(
                         self.name, station_id=external_id, year=year, cause=error
                     ) from error
-                time.sleep(API_RETRY_BACKOFF_SECONDS * (attempt + 1))
+                budget.sleep_within(API_RETRY_BACKOFF_SECONDS * (attempt + 1))
             else:
                 break
 

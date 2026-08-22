@@ -201,12 +201,10 @@ def load_year(
     try:
         df = fetch(fetch_variables)
     except FetchError:
-        # A stale entry that answers the request is better than nothing: the
-        # data is real, only its freshness is in doubt, and the reason it was
-        # being refreshed is that the year may still be receiving records.
-        # Only a transport failure degrades this way -- DataNotAvailableError
-        # and a malformed response still raise.
-        if read_from_cache and cached is not None and set(variables) <= set(cached.columns):
+        # stale data is real data; only a transport failure degrades this way
+        if read_from_cache and cached is not None and set(variables) <= set(
+            cached.columns
+        ):
             return cached[list(variables)]
         raise
     if cacheable and write_to_cache:

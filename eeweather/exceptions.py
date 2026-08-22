@@ -139,6 +139,30 @@ class FetchError(EEWeatherError):
 
         return None if response is None else response.status_code
 
+class FetchDeadlineExceeded(EEWeatherError):
+    """Raised when a request's fetch budget runs out.
+
+    A budget bounds the wall-clock time a single request may spend on the
+    network. Without one, three retries at a 120 second socket timeout, per
+    station-year, per site, has no upper bound at all.
+
+    Attributes
+    ----------
+    seconds : float
+        the budget that was set
+    what : str
+        what was being fetched when it ran out
+    """
+
+    def __init__(self, seconds, what):
+        super().__init__(
+            "Fetch budget of {}s exhausted while fetching {}.".format(
+                seconds, what
+            )
+        )
+        self.seconds = seconds
+        self.what = what
+
 
 class NoQualifiedStationError(EEWeatherError):
     """Raised when no station in the registry qualifies to estimate weather

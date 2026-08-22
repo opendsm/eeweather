@@ -81,7 +81,7 @@ def test_archive_miss_raises_data_not_available(monkeypatch):
 def test_archive_fetch_retries_server_errors(monkeypatch):
     calls = []
     sleeps = []
-    monkeypatch.setattr("eeweather.sources.base.time.sleep", sleeps.append)
+    monkeypatch.setattr("eeweather.sources.budget.time.sleep", sleeps.append)
 
     def flaky_get(url, timeout=None):
         calls.append(url)
@@ -102,7 +102,7 @@ def test_archive_fetch_retries_server_errors(monkeypatch):
 def test_archive_fetch_client_error_raises_immediately(monkeypatch):
     calls = []
     monkeypatch.setattr(
-        "eeweather.sources.base.time.sleep", lambda s: None
+        "eeweather.sources.budget.time.sleep", lambda s: None
     )
 
     def forbidden_get(url, timeout=None):
