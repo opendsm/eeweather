@@ -11,6 +11,7 @@ from .registry.zones import zones_at
 from .sources import StationSource
 from .sources.engine import known_source_names, resolve_source, _route
 from .sources.pipeline import validate_requested
+from .sources.vocabulary import with_imputed_fractions
 from .sources.matching import rank_stations
 
 
@@ -284,6 +285,8 @@ class WeatherLocation(object):
             variables = ("temperature",)
         groups, requested = _route(variables, self.sources)
         validate_requested(requested)
+        if load_kwargs.get("imputation"):
+            requested = with_imputed_fractions(requested)
 
         frames = []
         warnings = []
@@ -304,7 +307,8 @@ class WeatherLocation(object):
             warnings.extend(group_warnings)
             provenance.update(group_provenance)
 
-        df = pd.concat(frames, axis=1)[list(requested)]
+        df = pd.concat(frames, axis=1)
+        df = df.reindex(columns=[c for c in requested if c in df.columns])
         df.attrs["provenance"] = provenance
         self.provenance = provenance
         self._capture_pins(provenance)

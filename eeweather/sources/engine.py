@@ -44,6 +44,9 @@ from .tmy3 import TMY3Source
 from .vocabulary import (
     aggregation_for,
     all_variables,
+    imputed_fraction_name,
+    is_imputed_fraction,
+    with_imputed_fractions,
     register_variables,
     valid_variables_or_raise,
 )
@@ -198,9 +201,16 @@ def observation_cache_key(source_name, station_id, year):
 def _fetch_year(adapter, station_id, external_id, year, variables):
     """One year of observations resampled to an hourly frame.
 
+    Always produces an imputed-fraction companion for every point-in-time
+    variable; load_year drops the ones the caller did not ask for. They can
+    only be derived here, where the pre-interpolation observations still
+    exist, so they are computed unconditionally and cached with the data.
+
     Raises DataNotAvailableError when the station has no observations at
     all for the year.
     """
+    # companions are produced here, never requested from the source
+    variables = tuple(v for v in variables if not is_imputed_fraction(v))
     raw = adapter.fetch_year(external_id, year, variables)
     if len(raw) == 0:
         raise DataNotAvailableError(adapter.name, station_id=station_id, year=year)
@@ -209,8 +219,10 @@ def _fetch_year(adapter, station_id, external_id, year, variables):
     accumulation = [c for c in raw.columns if aggregation_for(c) == "sum"]
     parts = []
     if point:
+        # counted before interpolation, the only point the distinction exists
+        observed = raw[point].resample("h").count()
         # CalTRACK 2.3.3
-        parts.append(
+        interpolated = (
             raw[point]
             .resample("min")
             .mean()
@@ -218,11 +230,20 @@ def _fetch_year(adapter, station_id, external_id, year, variables):
             .resample("h")
             .mean()
         )
+        parts.append(interpolated)
+        # NaN, not 1.0, where nothing was filled in: missing is not imputed
+        imputed = (observed.reindex(interpolated.index).fillna(0) == 0).astype(float)
+        imputed = imputed.where(interpolated.notna())
+        imputed.columns = [imputed_fraction_name(c) for c in imputed.columns]
+        parts.append(imputed)
     if accumulation:
         # accumulations add up within the hour and are never fabricated
         # by interpolation
         parts.append(raw[accumulation].resample("h").sum(min_count=1))
-    df = pd.concat(parts, axis=1)[list(raw.columns)]
+    ordered = list(raw.columns) + [
+        imputed_fraction_name(c) for c in point
+    ]
+    df = pd.concat(parts, axis=1)[ordered]
 
     return df
 
@@ -230,6 +251,7 @@ def _fetch_year(adapter, station_id, external_id, year, variables):
 def _load_observation_year(
     adapter, station_id, external_id, year, variables,
     read_from_cache, write_to_cache, fetch_from_web,
+    imputation=False,
 ):
     """One year of hourly data for a station, from cache when it covers
     the request.
@@ -238,6 +260,12 @@ def _load_observation_year(
     request and fetching is disabled.
     """
     fetch = functools.partial(_fetch_year, adapter, station_id, external_id, year)
+    # ordinary columns, so the cache and column selection carry them along
+    if imputation:
+        variables = variables + tuple(
+            imputed_fraction_name(v) for v in variables
+            if aggregation_for(v) != "sum"
+        )
     df = load_year(
         observation_cache_key(adapter.name, station_id, year), year, variables, fetch,
         adapter.cacheable, read_from_cache, write_to_cache, fetch_from_web,
@@ -251,6 +279,7 @@ def _load_observation_year(
 def _load_observations(
     adapter, station_id, start, end, variables,
     read_from_cache, write_to_cache, fetch_from_web,
+    imputation=False,
 ):
     """Hourly observations over the requested years; missing years surface
     as warnings, and NaN rows after alignment."""
@@ -281,6 +310,7 @@ def _load_observations(
                 _load_observation_year(
                     adapter, station_id, external_id, year, variables,
                     read_from_cache, write_to_cache, fetch_from_web,
+                    imputation,
                 )
             )
         except DataNotAvailableError:
@@ -299,8 +329,17 @@ def _load_observations(
     if data:
         df = pd.concat(data)
     else:
+        # the same columns a successful load would have produced, so a
+        # caller reading a companion does not have to special-case the
+        # empty result
+        columns = list(variables)
+        if imputation:
+            columns += [
+                imputed_fraction_name(v) for v in variables
+                if aggregation_for(v) != "sum"
+            ]
         df = pd.DataFrame(
-            columns=list(variables),
+            columns=columns,
             index=pd.DatetimeIndex([], tz=timezone.utc),
             dtype=float,
         )
@@ -410,6 +449,7 @@ def load_data(
     write_to_cache: bool = True,
     fetch_from_web: bool = True,
     raise_when_empty: bool | None = None,
+    imputation: bool = False,
 ):
     """Load a station's weather data between two dates (inclusive).
 
@@ -444,6 +484,17 @@ def load_data(
         Whether a request yielding no data at all raises
         DataNotAvailableError; defaults to True for pinned requests and
         False for routed ones (partial coverage never raises either way).
+    imputation : bool
+        Also return, for each point-in-time variable, a
+        ``<variable>_imputed_fraction`` column saying how much of each
+        value was fabricated by gap interpolation rather than observed.
+        At hourly frequency it is 1.0 for an hour nothing was reported
+        for, 0.0 for an hour that was, and NaN wherever the value itself
+        is NaN -- a gap too long to bridge is missing, not imputed. At
+        coarser frequencies it averages to the fraction of the period's
+        hours that were fabricated. Accumulations are never interpolated
+        and get no companion; neither do typical-year (normals) sources,
+        which have no observations to be missing.
 
     Returns
     -------
@@ -478,6 +529,11 @@ def load_data(
         groups, requested = _route(variables, adapters)
         validate_requested(requested)
 
+    if imputation:
+        # from here the companions are ordinary requested columns, so every
+        # selection downstream carries them without knowing they exist
+        requested = with_imputed_fractions(requested)
+
     warnings = []
     frames = []
     provenance = {}
@@ -488,10 +544,16 @@ def load_data(
             loader = _load_normals
         else:
             raise ValueError("Unknown source kind: {}".format(adapter.kind))
-        group_df, group_warnings = loader(
-            adapter, station_id, start, end, tuple(group_variables),
-            read_from_cache, write_to_cache, fetch_from_web,
-        )
+        if adapter.kind == "observations":
+            group_df, group_warnings = loader(
+                adapter, station_id, start, end, tuple(group_variables),
+                read_from_cache, write_to_cache, fetch_from_web, imputation,
+            )
+        else:
+            group_df, group_warnings = loader(
+                adapter, station_id, start, end, tuple(group_variables),
+                read_from_cache, write_to_cache, fetch_from_web,
+            )
         warnings.extend(group_warnings)
         frames.append(group_df)
         provenance[adapter.name] = Provenance(
@@ -503,7 +565,8 @@ def load_data(
             payload={},
         )
 
-    df = pd.concat(frames, axis=1)[list(requested)]
+    df = pd.concat(frames, axis=1)
+    df = df.reindex(columns=[c for c in requested if c in df.columns])
     if offset != pd.tseries.frequencies.to_offset("h"):
         df = resample_by_vocabulary(df, offset)
     df = align_to_range(df, start, end, offset)

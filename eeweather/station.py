@@ -203,6 +203,7 @@ class WeatherStation(object):
         read_from_cache: bool = True,
         write_to_cache: bool = True,
         fetch_from_web: bool = True,
+        imputation: bool = False,
     ):
         """Load this station's weather data between two dates (inclusive).
 
@@ -236,13 +237,19 @@ class WeatherStation(object):
             Whether or not to write newly loaded data to cache.
         fetch_from_web : bool
             Whether or not to fetch data from the web.
+        imputation : bool
+            Also return a ``<variable>_imputed_fraction`` companion for
+            each point-in-time variable, saying how much of each value
+            was fabricated by gap interpolation rather than observed.
 
         Returns
         -------
         tuple of (pandas.DataFrame, list of EEWeatherWarning)
-            One column per requested variable, indexed over the full
-            requested range at the requested frequency; periods without
-            data are NaN. The frame's ``attrs["provenance"]`` (also
+            One column per requested variable -- plus an
+            imputed-fraction companion per point-in-time variable when
+            ``imputation`` is set -- indexed over the full requested
+            range at the requested frequency; periods without data are
+            NaN. The frame's ``attrs["provenance"]`` (also
             recorded on ``self.provenance``) maps each source used to a
             Provenance record.
         """
@@ -257,6 +264,7 @@ class WeatherStation(object):
             read_from_cache=read_from_cache,
             write_to_cache=write_to_cache,
             fetch_from_web=fetch_from_web,
+            imputation=imputation,
         )
         self.provenance = df.attrs["provenance"]
 

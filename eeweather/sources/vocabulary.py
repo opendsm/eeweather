@@ -171,6 +171,34 @@ VARIABLES = {
 
 RESERVED_SUFFIXES = ("_imputed_fraction", "_is_imputed")
 
+# one of RESERVED_SUFFIXES; the other stays reserved
+IMPUTED_FRACTION_SUFFIX = "_imputed_fraction"
+
+
+def imputed_fraction_name(variable):
+    """The companion column reporting `variable`'s imputed fraction."""
+    return variable + IMPUTED_FRACTION_SUFFIX
+
+
+def with_imputed_fractions(variables):
+    """`variables` plus a companion for each one that can be interpolated.
+
+    Expanded at the routing boundary rather than inside the loader so that
+    every column selection downstream carries the companions without
+    knowing they exist. Accumulations are never gap-interpolated and get
+    none.
+    """
+    return tuple(variables) + tuple(
+        imputed_fraction_name(v) for v in variables
+        if aggregation_for(v) != "sum"
+    )
+
+
+def is_imputed_fraction(column):
+    """Whether a frame column is an imputed-fraction companion."""
+    return column.endswith(IMPUTED_FRACTION_SUFFIX)
+
+
 _registered_variables = {}
 
 

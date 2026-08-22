@@ -866,3 +866,31 @@ def test_to_dict_round_trips_coverage_gated_source_after_load(
     state = location.to_dict()
 
     assert state["pins"] == {"ghcnh": "USW00093134"}
+
+
+def test_imputation_reaches_the_location_entry_point():
+    """WeatherLocation.load_data has its own routing, separate from the
+    engine's. It selected on the requested variables and dropped the
+    companions, so the flag silently did nothing through the entry point
+    the docs call primary. Expanding at the routing boundary means every
+    downstream selection carries them without knowing they exist."""
+    location = WeatherLocation(41.88, -87.62)
+
+    df, _ = location.load_data(
+        datetime(2020, 1, 1, tzinfo=timezone.utc),
+        datetime(2020, 1, 3, tzinfo=timezone.utc),
+        imputation=True,
+    )
+
+    assert list(df.columns) == ["temperature", "temperature_imputed_fraction"]
+
+
+def test_imputation_is_off_by_default_at_the_location_entry_point():
+    location = WeatherLocation(41.88, -87.62)
+
+    df, _ = location.load_data(
+        datetime(2020, 1, 1, tzinfo=timezone.utc),
+        datetime(2020, 1, 3, tzinfo=timezone.utc),
+    )
+
+    assert list(df.columns) == ["temperature"]

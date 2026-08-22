@@ -16,6 +16,7 @@ from eeweather.sources.engine import (
     observation_cache_key,
 )
 from eeweather.sources.ghcnh import GHCNhSource
+from eeweather.sources.vocabulary import aggregation_for
 from eeweather.sources.tmy3 import TMY3Source
 
 
@@ -30,8 +31,11 @@ TMY3 = TMY3Source()
 def test_fetch_year(mock_api_transport):
     df = _fetch_year(GHCNH, "USW00093134", "USW00093134", 2007, ("temperature",))
 
-    assert list(df.columns) == ["temperature"]
-    assert df.shape == (8760, 1)
+    # the imputed-fraction companion rides along unconditionally: it can only
+    # be derived here, before interpolation, so it has to be cached with the
+    # data rather than computed on demand
+    assert list(df.columns) == ["temperature", "temperature_imputed_fraction"]
+    assert df.shape == (8760, 2)
     assert df.index[0] == datetime(2007, 1, 1, tzinfo=pytz.UTC)
     assert df.temperature.sum() == pytest.approx(156159.5455, abs=1e-3)
 
@@ -42,8 +46,151 @@ def test_fetch_year_multiple_variables(mock_api_transport):
         ("temperature", "relative_humidity"),
     )
 
-    assert list(df.columns) == ["temperature", "relative_humidity"]
-    assert df.shape == (8760, 2)
+    assert list(df.columns) == [
+        "temperature",
+        "relative_humidity",
+        "temperature_imputed_fraction",
+        "relative_humidity_imputed_fraction",
+    ]
+    assert df.shape == (8760, 4)
+
+
+# imputation labelling
+
+
+class _Observations:
+    """A source serving exactly the observations it is given."""
+
+    name = "fake"
+    cacheable = False
+    kind = "observations"
+    id_namespace = "usaf"
+    variables = ("temperature",)
+
+    def __init__(self, timestamps, values):
+        self.index = pd.to_datetime(timestamps, utc=True)
+        self.values = values
+
+    def fetch_year(self, external_id, year, variables):
+        return pd.DataFrame({"temperature": self.values}, index=self.index)
+
+
+def _labelled(timestamps, values, through):
+    df = _fetch_year(
+        _Observations(timestamps, values), "s", "e", 2020, ("temperature",))
+    return df.loc["2020-01-01 00:00":through]
+
+
+def test_an_observed_hour_is_labelled_observed():
+    window = _labelled(
+        ["2020-01-01 00:00", "2020-01-01 01:00"], [10.0, 12.0],
+        "2020-01-01 01:00")
+
+    assert list(window["temperature_imputed_fraction"]) == [0.0, 0.0]
+
+
+def test_a_fabricated_hour_is_labelled_imputed():
+    """Two unobserved hours between readings are filled completely, and
+    nothing in the value column says so."""
+    window = _labelled(
+        ["2020-01-01 00:00", "2020-01-01 03:00"], [10.0, 40.0],
+        "2020-01-01 03:00")
+
+    assert list(window["temperature_imputed_fraction"]) == [0.0, 1.0, 1.0, 0.0]
+    assert window["temperature"].notna().all()
+
+
+def test_a_gap_too_long_to_bridge_is_missing_not_imputed():
+    """Interpolation reaches one hour either side. Beyond that the value is
+    NaN, and the companion is NaN too -- absent, not fabricated."""
+    window = _labelled(
+        ["2020-01-01 00:00", "2020-01-01 05:00"], [10.0, 60.0],
+        "2020-01-01 05:00")
+    fraction = window["temperature_imputed_fraction"]
+
+    assert list(fraction.isna()) == [False, False, True, True, False, False]
+    assert (fraction.isna() == window["temperature"].isna()).all()
+
+
+def test_the_companion_is_nan_exactly_where_the_value_is():
+    window = _labelled(
+        ["2020-01-01 00:00", "2020-01-01 08:00"], [10.0, 90.0],
+        "2020-01-01 08:00")
+
+    assert (window["temperature"].isna()
+            == window["temperature_imputed_fraction"].isna()).all()
+
+
+def test_the_companion_aggregates_by_mean():
+    """Which is what makes a coarse-frequency value the *fraction* of the
+    period's hours that were fabricated. It works because the companion is
+    outside the vocabulary and aggregation_for averages anything it does not
+    recognise -- so this is the assumption the naming rests on."""
+    assert aggregation_for("temperature_imputed_fraction") == "mean"
+
+
+def test_averaging_the_companion_gives_the_fabricated_fraction():
+    """Averaged over a period, the companion is the share of that period's
+    valued hours that was made up -- which is what makes the name true at
+    every frequency, not only hourly.
+
+    Averaged by slicing rather than resampling: any offset arithmetic trips
+    a pandas DeprecationWarning that this base already fails on
+    (test_load_data_daily and friends fail identically without this change),
+    and that is not this change's to fix.
+    """
+    hourly = _labelled(
+        ["2020-01-01 00:00", "2020-01-01 02:00", "2020-01-01 05:00"],
+        [10.0, 30.0, 60.0],
+        "2020-01-01 05:00")
+    fraction = hourly["temperature_imputed_fraction"]
+
+    # hours 0,1,2 -> observed, fabricated, observed
+    assert fraction.iloc[0:3].mean() == pytest.approx(1 / 3)
+    # hours 3,4,5 -> fabricated, fabricated, observed
+    assert fraction.iloc[3:6].mean() == pytest.approx(2 / 3)
+
+
+def test_an_observed_value_is_altered_by_the_interpolation():
+    """Not a property of the companion, but the reason it is needed: the
+    resample moves hours that *were* observed, so the value column alone
+    cannot tell you what the station actually reported."""
+    hourly = _labelled(
+        ["2020-01-01 00:00", "2020-01-01 02:00"], [10.0, 30.0],
+        "2020-01-01 02:00")
+
+    assert hourly["temperature_imputed_fraction"].iloc[0] == 0.0
+    assert hourly["temperature"].iloc[0] != pytest.approx(10.0)
+
+
+def test_imputation_is_off_by_default(mock_api_transport):
+    df, _ = load_data(
+        "USW00093134",
+        datetime(2007, 1, 1, tzinfo=pytz.UTC),
+        datetime(2007, 1, 2, tzinfo=pytz.UTC),
+    )
+
+    assert list(df.columns) == ["temperature"]
+
+
+def test_imputation_appends_companions_after_the_requested_variables(
+        mock_api_transport):
+    """Purely additive: the requested variables keep their positions, so
+    turning the flag on never moves a column a caller was already reading."""
+    df, _ = load_data(
+        "USW00093134",
+        datetime(2007, 1, 1, tzinfo=pytz.UTC),
+        datetime(2007, 1, 2, tzinfo=pytz.UTC),
+        variables=("temperature", "relative_humidity"),
+        imputation=True,
+    )
+
+    assert list(df.columns) == [
+        "temperature",
+        "relative_humidity",
+        "temperature_imputed_fraction",
+        "relative_humidity_imputed_fraction",
+    ]
 
 
 def test_fetch_year_missing_year_raises(mock_api_transport):
@@ -558,7 +705,7 @@ def test_load_cached_data(mock_api_transport, monkeypatch_key_value_store):
     cached = load_cached_data("USW00093134")
 
     assert cached is not None
-    assert list(cached.columns) == ["temperature"]
+    assert list(cached.columns) == ["temperature", "temperature_imputed_fraction"]
     # the cache holds the full fetched year, not just the requested slice
     assert len(cached) == 8760
 
@@ -633,3 +780,20 @@ def test_load_data_untranslatable_station_warns_once(
     assert df.temperature.isna().all()
     names = [w.qualified_name for w in warnings]
     assert names.count("eeweather.data_not_available") == 1
+
+
+def test_an_empty_result_still_has_the_companion_columns(
+        monkeypatch_key_value_store):
+    """Shape must not depend on whether anything loaded: a caller reading
+    a companion should not have to special-case the empty frame."""
+    df, _ = load_data(
+        "USW00093134",
+        datetime(1800, 1, 1, tzinfo=pytz.UTC),
+        datetime(1800, 1, 2, tzinfo=pytz.UTC),
+        imputation=True,
+        fetch_from_web=False,
+    )
+
+    assert list(df.columns) == ["temperature", "temperature_imputed_fraction"]
+    assert len(df) > 0
+    assert df.isna().all().all()

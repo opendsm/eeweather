@@ -156,7 +156,14 @@ This release is a redesign; the public API is not compatible with 0.3.x.
 * Tests run fully offline against captured NCEI access api payloads,
   with a python/os matrix workflow, tox environments, ruff lint, and a
   97% coverage floor.
-
+* ``load_data(imputation=True)`` returns a
+  ``<variable>_imputed_fraction`` companion for each point-in-time
+  variable: 1.0 for an hour nothing was reported for, 0.0 for one that
+  was, NaN where the value itself is NaN. Gap interpolation is otherwise
+  invisible in the returned frame — it invents hours and shifts the value
+  of hours that were observed — so a caller with a rule about missing data
+  had no way to apply it. Outside the vocabulary, so it averages to the
+  fabricated fraction at coarser frequencies. Off by default.
 0.3.29
 ------
 

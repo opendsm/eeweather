@@ -82,7 +82,8 @@ def test_serialize_deserialize_hourly_data_round_trip(mock_api_transport):
 
     serialized = serialize_hourly_data(df)
 
-    assert serialized["columns"] == ["temperature"]
+    assert serialized["columns"] == [
+        "temperature", "temperature_imputed_fraction"]
     assert serialized["rows"][0][0] == "2007010100"
     assert len(serialized["rows"]) == len(df)
 
@@ -314,7 +315,12 @@ def test_load_year_variable_superset_refetches(
 
     # the refreshed cache entry now covers both variables
     cached, _, _ = read_cached_year(CACHE_KEY, 2007)
-    assert set(cached.columns) == {"temperature", "wind_speed"}
+    assert set(cached.columns) == {
+        "temperature", "wind_speed",
+        # imputed-fraction companions are produced at fetch and cached
+        # with the data; they can only be derived pre-interpolation
+        "temperature_imputed_fraction", "wind_speed_imputed_fraction",
+    }
 
     # a temperature-only request serves the requested subset from cache
     df3 = _load_2007(("temperature",))
@@ -331,7 +337,12 @@ def test_load_year_refresh_keeps_cached_columns_the_request_omits(
     assert list(df.columns) == ["wind_speed"]
 
     cached, _, _ = read_cached_year(CACHE_KEY, 2007)
-    assert set(cached.columns) == {"temperature", "wind_speed"}
+    assert set(cached.columns) == {
+        "temperature", "wind_speed",
+        # imputed-fraction companions are produced at fetch and cached
+        # with the data; they can only be derived pre-interpolation
+        "temperature_imputed_fraction", "wind_speed_imputed_fraction",
+    }
 
 
 def test_load_year_refresh_of_a_stale_entry_keeps_its_columns(
@@ -349,7 +360,12 @@ def test_load_year_refresh_of_a_stale_entry_keeps_its_columns(
     assert list(df.columns) == ["wind_speed"]
 
     cached, _, fresh = read_cached_year(CACHE_KEY, 2007)
-    assert set(cached.columns) == {"temperature", "wind_speed"}
+    assert set(cached.columns) == {
+        "temperature", "wind_speed",
+        # imputed-fraction companions are produced at fetch and cached
+        # with the data; they can only be derived pre-interpolation
+        "temperature_imputed_fraction", "wind_speed_imputed_fraction",
+    }
     assert fresh is True
 
 
