@@ -156,7 +156,11 @@ This release is a redesign; the public API is not compatible with 0.3.x.
 * Tests run fully offline against captured NCEI access api payloads,
   with a python/os matrix workflow, tox environments, ruff lint, and a
   97% coverage floor.
-
+* Timedeltas are constructed with an explicit unit. pandas builds a
+  bare numpy timedelta64 from its keyword and string constructor forms,
+  which numpy 2.5 deprecates; under ``filterwarnings = ["error"]`` that
+  failed every coarser- and finer-than-hourly resample path. pandas 3.0
+  fixes it upstream, so this only affects pandas 2.x.
 0.3.29
 ------
 
