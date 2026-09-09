@@ -24,6 +24,60 @@ LEADING_GAP_WARNING_THRESHOLD = timedelta(days=1)
 INTERNAL_GAP_WARNING_THRESHOLD = timedelta(days=7)
 
 
+def _datetime_is_utc(dt):
+    if dt.tzinfo is None:
+        return False
+
+    return dt.utcoffset().total_seconds() == 0
+
+
+def validate_range(start, end):
+    """Reject a request range that is not an ordered pair of explicit-UTC
+    datetimes."""
+    if not _datetime_is_utc(start):
+        raise ValueError(
+            "start must be an explicit-UTC datetime, got: {}".format(start)
+        )
+    if not _datetime_is_utc(end):
+        raise ValueError("end must be an explicit-UTC datetime, got: {}".format(end))
+    if start > end:
+        raise ValueError(
+            "start must not be after end, got: {} > {}".format(start, end)
+        )
+
+
+def validate_requested(variables):
+    """Reject a requested variable list that is empty or repeats a name."""
+    if len(variables) == 0:
+        raise ValueError("At least one variable must be requested.")
+    if len(set(variables)) != len(variables):
+        raise ValueError(
+            "Duplicate variables requested: {}".format(", ".join(variables))
+        )
+
+
+def requested_variables(adapter, variables):
+    """The variables one source is asked for when every variable is
+    served by it: its defaults when unspecified, its whole vocabulary for
+    'all', validated against what it serves."""
+    if variables is None:
+        variables = tuple(adapter.default_variables)
+    elif variables == "all":
+        variables = tuple(adapter.variables)
+    variables = tuple(variables)
+    validate_requested(variables)
+
+    unservable = [v for v in variables if v not in adapter.variables]
+    if unservable:
+        raise ValueError(
+            "Source '{}' does not serve: {}. It serves: {}.".format(
+                adapter.name, ", ".join(unservable), ", ".join(adapter.variables)
+            )
+        )
+
+    return variables
+
+
 def store():
     return eeweather.cache.key_value_store_proxy.get_store()
 

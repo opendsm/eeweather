@@ -1,12 +1,12 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 
 import pandas as pd
 import pytest
 import pytz
 
 from eeweather.exceptions import DataNotAvailableError
+from eeweather.sources.base import Provenance
 from eeweather.sources.engine import (
-    _datetime_is_utc,
     _fetch_year,
     _load_normals_block,
     _load_observation_year,
@@ -14,7 +14,6 @@ from eeweather.sources.engine import (
     load_data,
     normals_cache_key,
     observation_cache_key,
-    Provenance,
 )
 from eeweather.sources.ghcnh import GHCNhSource
 from eeweather.sources.tmy3 import TMY3Source
@@ -537,24 +536,6 @@ def test_load_cached_data(mock_api_transport, monkeypatch_key_value_store):
     assert len(cached) == 8760
 
 # request-range validation
-
-
-def test_datetime_is_utc_accepts_utc():
-    assert _datetime_is_utc(datetime(2020, 1, 1, tzinfo=pytz.UTC)) is True
-    assert _datetime_is_utc(datetime(2020, 1, 1, tzinfo=timezone.utc)) is True
-
-
-def test_datetime_is_utc_rejects_naive():
-    assert _datetime_is_utc(datetime(2020, 1, 1)) is False
-
-
-def test_datetime_is_utc_rejects_offsets():
-    assert _datetime_is_utc(
-        datetime(2020, 1, 1, tzinfo=timezone(timedelta(hours=5)))
-    ) is False
-    assert _datetime_is_utc(
-        datetime(2020, 1, 1, tzinfo=timezone(timedelta(hours=-8)))
-    ) is False
 
 
 def test_load_data_pinned_raises_when_requested_dates_are_empty(
