@@ -60,13 +60,16 @@ opaque keys into the registry.
 ## Sources and routing
 
 A *source* is a provider of weather data. Built-ins: **GHCNh** (NOAA's hourly
-observation network — the default), **TMY3** and **CZ2010** (typical-year
-products, for normals-based analysis). Custom sources — a BigQuery mirror, an
-internal archive — implement small public protocols and participate as equals
-(see [adding-a-source.md](adding-a-source.md)).
+observation network), **NASA POWER** (two global reanalysis/satellite grids —
+location-keyed, never reachable through station-keyed surfaces), and **TMY3**
+and **CZ2010** (typical-year products, for normals-based analysis). Custom
+sources — a BigQuery mirror, an internal archive — implement small public
+protocols and participate as equals (see
+[adding-a-source.md](adding-a-source.md)).
 
-Locations and stations carry an ordered source preference
-(`sources=("ghcnh",)` by default). Each requested variable routes to the
+Locations carry an ordered source preference (`sources=("ghcnh",
+"nasa-power")` by default; stations default to `("ghcnh",)`). Each requested
+variable routes to the
 first source in the preference that serves it, and the results join into one
 frame — a user asking for temperature from observations and irradiance from a
 gridded product names variables, not plumbing. Two rules keep routing honest:
@@ -81,11 +84,15 @@ gridded product names variables, not plumbing. Two rules keep routing honest:
 Every variable has exactly one canonical name, unit, definition, and
 aggregation, owned by the vocabulary. Sources translate their native fields
 and units at ingest; users never see native forms, and un-vetted fields are
-never passed through. The 1.0 set is temperature, dew point temperature
+never passed through. The station set is temperature, dew point temperature
 [degC], relative humidity [%], wind speed [m/s], station-level pressure
-[hPa], and visibility [km]; `eeweather.sources.variables()` lists the current
-vocabulary and which sources serve each entry. External sources may register
-additional variables at runtime under the same one-definition rules.
+[hPa], and visibility [km]; the NASA POWER grids extend the vocabulary with
+irradiance and its clear-sky components, longwave, atmospheric and surface
+fields, wind components, surface pressure (a distinct definition from
+station-level pressure), and precipitation.
+`eeweather.sources.variables()` lists the current vocabulary and which
+sources serve each entry. External sources may register additional variables
+at runtime under the same one-definition rules.
 
 ## Frequencies and aggregation
 

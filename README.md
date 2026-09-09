@@ -52,9 +52,10 @@ $ pip install eeweather
 
 ## Features
 
-- One loading verb over pluggable sources: GHCNh observations (NOAA), TMY3
-  (NREL) and CZ2010 (CEC) typical years; every load returns an aligned UTC
-  frame plus data-quality warnings and per-source provenance
+- One loading verb over pluggable sources: GHCNh observations (NOAA), NASA
+  POWER gridded meteorological and solar data, TMY3 (NREL) and CZ2010 (CEC)
+  typical years; every load returns an aligned UTC frame plus data-quality
+  warnings and per-source provenance
 - A packaged station registry with opaque ids and identifier translation
   (USAF, WBAN, ICAO), precomputed climate-zone assignments (IECC, Building
   America, California), ZCTA place codes, and per-source observation
