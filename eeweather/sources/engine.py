@@ -27,6 +27,7 @@ from ..registry.update import maybe_update
 from .base import Provenance
 from .cz2010 import CZ2010Source
 from .ghcnh import GHCNhSource
+from .nasa_power import NASAPowerSource
 from .pipeline import (
     align_to_range,
     data_gap_warnings,
@@ -51,7 +52,7 @@ from .vocabulary import (
 
 BUILTIN_SOURCES = {
     adapter.name: adapter
-    for adapter in (GHCNhSource(), TMY3Source(), CZ2010Source())
+    for adapter in (GHCNhSource(), NASAPowerSource(), TMY3Source(), CZ2010Source())
 }
 
 _registered_sources = {}
@@ -152,6 +153,25 @@ def sources_serving(variable):
     ]
 
     return names
+
+
+def _station_keyed_or_raise(adapters):
+    """Reject sources that estimate at a point on a station-keyed surface.
+
+    An estimation source addresses coordinates or a grid cell and has no
+    station identifiers, so a station id says nothing about where its
+    values come from.
+    """
+    location_keyed = [
+        adapter.name
+        for adapter in adapters
+        if hasattr(adapter, "estimate") and not hasattr(adapter, "id_namespace")
+    ]
+    if location_keyed:
+        raise ValueError(
+            "{} is location-keyed and has no station data; load it through"
+            " a WeatherLocation instead.".format(", ".join(location_keyed))
+        )
 
 
 
@@ -446,6 +466,7 @@ def load_data(
         raise_when_empty = pinned
     if pinned:
         adapter = resolve_source(source)
+        _station_keyed_or_raise([adapter])
         variables = requested_variables(adapter, variables)
         groups = {adapter: list(variables)}
         requested = tuple(variables)
@@ -453,6 +474,7 @@ def load_data(
         if variables is None:
             variables = ("temperature",)
         adapters = [resolve_source(entry) for entry in sources]
+        _station_keyed_or_raise(adapters)
         groups, requested = _route(variables, adapters)
         validate_requested(requested)
 

@@ -29,6 +29,7 @@ def _fixture_text(name):
 
 def test_resolve_source_by_name():
     assert resolve_source("ghcnh").name == "ghcnh"
+    assert resolve_source("nasa-power").name == "nasa-power"
     assert resolve_source("tmy3").name == "tmy3"
     assert resolve_source("cz2010").name == "cz2010"
 
@@ -45,9 +46,16 @@ def test_resolve_source_unknown_name():
 
 
 def test_sources_serving():
-    assert sources_serving("temperature") == ["cz2010", "ghcnh", "tmy3"]
-    assert sources_serving("wind_speed") == ["ghcnh"]
-    assert sources_serving("ghi") == []
+    assert sources_serving("temperature") == ["cz2010", "ghcnh", "nasa-power", "tmy3"]
+    assert sources_serving("wind_speed") == ["ghcnh", "nasa-power"]
+    # station-only quantities: no grid product serves them
+    assert sources_serving("visibility") == ["ghcnh"]
+    assert sources_serving("station_level_pressure") == ["ghcnh"]
+    # grid-only quantities
+    assert sources_serving("ghi") == ["nasa-power"]
+    assert sources_serving("dni") == ["nasa-power"]
+    assert sources_serving("surface_pressure") == ["nasa-power"]
+    assert sources_serving("precipitation") == ["nasa-power"]
 
 
 def test_variables_accessor():
@@ -55,8 +63,13 @@ def test_variables_accessor():
 
     assert df.index.name == "variable"
     assert df.loc["temperature", "unit"] == "degC"
-    assert df.loc["temperature", "sources"] == ("cz2010", "ghcnh", "tmy3")
-    assert df.loc["wind_speed", "sources"] == ("ghcnh",)
+    assert df.loc["temperature", "sources"] == (
+        "cz2010", "ghcnh", "nasa-power", "tmy3"
+    )
+    assert df.loc["wind_speed", "sources"] == ("ghcnh", "nasa-power")
+    assert df.loc["visibility", "sources"] == ("ghcnh",)
+    assert df.loc["ghi", "sources"] == ("nasa-power",)
+    assert df.loc["ghi", "unit"] == "W/m2"
     assert set(df.columns) == {"unit", "description", "aggregation", "sources"}
     assert df.loc["temperature", "aggregation"] == "mean"
     assert df.loc["precipitation", "aggregation"] == "sum"

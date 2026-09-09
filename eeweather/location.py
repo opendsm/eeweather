@@ -47,10 +47,12 @@ class WeatherLocation(object):
 
     The location is the primary abstraction; weather is estimated by the
     configured sources. Each requested variable routes to the first
-    source in the preference tuple that serves it; the default resolves
-    the point to the nearest suitable GHCNh station. After a load,
-    ``provenance`` records how each value was produced (which source,
-    which station or cell, how far away).
+    source in the preference tuple that serves it; by default station
+    observations come from the nearest suitable GHCNh station and
+    everything GHCNh does not serve — irradiance, and the rest of the
+    NASA POWER vocabulary — comes from the grid cell containing the
+    point. After a load, ``provenance`` records how each value was
+    produced (which source, which station or cell, how far away).
 
     Parameters
     ----------
@@ -69,7 +71,11 @@ class WeatherLocation(object):
     """
 
     def __init__(
-        self, latitude: float, longitude: float, sources=("ghcnh",), pins=None
+        self,
+        latitude: float,
+        longitude: float,
+        sources=("ghcnh", "nasa-power"),
+        pins=None,
     ):
         self.latitude = latitude
         self.longitude = longitude
@@ -85,7 +91,9 @@ class WeatherLocation(object):
         self.provenance = None
 
     @classmethod
-    def from_place(cls, kind: str, code: str, sources=("ghcnh",)) -> "WeatherLocation":
+    def from_place(
+        cls, kind: str, code: str, sources=("ghcnh", "nasa-power")
+    ) -> "WeatherLocation":
         """Construct a location from a coded place, e.g.
         ``from_place("zcta", "91104")`` for a ZIP code tabulation area."""
         place = get_place(kind, code)

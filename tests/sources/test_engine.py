@@ -228,6 +228,33 @@ def test_load_data_pinned_source_never_servable_variable_raises():
         )
 
 
+# station-keyed surface: a source that estimates at a point has no
+# station data, and the surface names it rather than failing on a
+# missing identifier namespace
+
+
+def test_load_data_routed_location_keyed_source_raises():
+    start = datetime(2007, 1, 1, tzinfo=pytz.UTC)
+    end = datetime(2007, 4, 3, tzinfo=pytz.UTC)
+
+    with pytest.raises(ValueError, match="nasa-power is location-keyed"):
+        load_data(
+            "USW00093134", start, end, sources=("ghcnh", "nasa-power")
+        )
+
+
+def test_load_data_pinned_location_keyed_source_raises():
+    start = datetime(2007, 1, 1, tzinfo=pytz.UTC)
+    end = datetime(2007, 4, 3, tzinfo=pytz.UTC)
+
+    with pytest.raises(ValueError, match="nasa-power is location-keyed"):
+        load_data(
+            "USW00093134", start, end, source="nasa-power", variables=("ghi",)
+        )
+
+
+
+
 # provenance
 
 
