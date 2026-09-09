@@ -233,7 +233,7 @@ def resample_by_vocabulary(df, offset):
     accumulations evenly, never crossing a missing hour.
     """
     if isinstance(offset, pd.tseries.offsets.Tick) and (
-        pd.Timedelta(offset) < pd.Timedelta(hours=1)
+        pd.Timedelta(offset) < pd.Timedelta(1, unit="h")
     ):
         return _upsample(df, offset)
 
@@ -261,12 +261,12 @@ def _upsample(df, offset):
     """Hourly values at a finer frequency; the offset must divide the
     hour evenly."""
     step = pd.Timedelta(offset)
-    if pd.Timedelta(hours=1) % step != pd.Timedelta(0):
+    if pd.Timedelta(1, unit="h") % step != pd.Timedelta(0):
         raise ValueError(
             "A sub-hourly frequency must divide the hour evenly,"
             " got: {}".format(offset.freqstr)
         )
-    slots = int(pd.Timedelta(hours=1) / step)
+    slots = int(pd.Timedelta(1, unit="h") / step)
 
     up = df.resample(offset).asfreq()
     columns = {}
