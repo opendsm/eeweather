@@ -12,6 +12,7 @@ from eeweather.sources import Feed, Source, StationSource, Variable, register
 from eeweather.sources import engine, vocabulary
 from eeweather.sources.base import Provenance
 from eeweather.sources.engine import (
+    _route,
     known_source_names,
     resolve_source,
     sources_serving,
@@ -47,10 +48,110 @@ def test_location_resolves_nearest_station(mock_api_transport):
 def test_location_default_sources():
     location = WeatherLocation(USC_LATITUDE, USC_LONGITUDE)
 
-    assert len(location.sources) == 1
+    assert len(location.sources) == 2
     assert isinstance(location.sources[0], StationSource)
     assert location.sources[0].name == "ghcnh"
+    # the grid source is location-keyed, so it is used as it is
+    assert not isinstance(location.sources[1], StationSource)
+    assert location.sources[1].name == "nasa-power"
     assert location.provenance is None
+
+
+def test_location_default_variables_all_routes_station_first_then_grid():
+    location = WeatherLocation(USC_LATITUDE, USC_LONGITUDE)
+
+    groups, requested = _route("all", location.sources)
+    routed = {source.name: tuple(names) for source, names in groups.items()}
+
+    # ghcnh's six variables plus the twenty-six POWER variables it does
+    # not serve: a default 'all' load spans both sources and touches NASA
+    assert len(requested) == 32
+    assert routed["ghcnh"] == (
+        "temperature",
+        "dew_point_temperature",
+        "relative_humidity",
+        "wind_speed",
+        "station_level_pressure",
+        "visibility",
+    )
+    # the four variables both declare stay with the station source
+    assert routed["nasa-power"] == (
+        "specific_humidity",
+        "skin_temperature",
+        "soil_temperature",
+        "eastward_wind",
+        "northward_wind",
+        "surface_roughness",
+        "surface_pressure",
+        "precipitation",
+        "snowfall",
+        "snow_cover",
+        "ghi",
+        "clearsky_ghi",
+        "dni",
+        "clearsky_dni",
+        "dhi",
+        "clearsky_dhi",
+        "bhi",
+        "clearsky_bhi",
+        "albedo",
+        "longwave_down",
+        "longwave_up",
+        "airmass",
+        "aerosol_optical_depth_550",
+        "aerosol_optical_depth_840",
+        "precipitable_water",
+        "cloud_cover",
+    )
+    assert requested == routed["ghcnh"] + routed["nasa-power"]
+
+
+def test_location_routes_station_and_grid_onto_one_index(
+    mock_api_transport, mock_nasa_power_transport, monkeypatch_key_value_store
+):
+    location = WeatherLocation(USC_LATITUDE, USC_LONGITUDE)
+    start = datetime(2007, 6, 1, tzinfo=timezone.utc)
+    end = datetime(2007, 6, 30, 23, tzinfo=timezone.utc)
+
+    df, warnings = location.load_data(
+        start, end, variables=("temperature", "ghi")
+    )
+
+    assert list(df.columns) == ["temperature", "ghi"]
+    assert len(df) == 720
+    # one shared UTC index: the join introduces no NaN stripe on either
+    # side, so both columns are complete over the whole range
+    assert df.index[0] == start
+    assert df.index[-1] == end
+    assert df.temperature.notna().all()
+    assert df.ghi.notna().all()
+    assert location.provenance["ghcnh"].station_id == "USW00093134"
+    assert location.provenance["ghcnh"].variables == ("temperature",)
+    assert location.provenance["nasa-power"].station_id is None
+    assert location.provenance["nasa-power"].variables == ("ghi",)
+    # the grid cell containing the point, carried for downstream use
+    assert location.provenance["nasa-power"].payload["solar"]["cell_lat"] == 34.5
+    assert location.provenance["nasa-power"].payload["solar"]["cell_lon"] == -118.5
+    assert warnings == []
+
+
+def test_location_grid_frame_matches_the_station_frame_index(
+    mock_api_transport, mock_nasa_power_transport, monkeypatch_key_value_store
+):
+    location = WeatherLocation(USC_LATITUDE, USC_LONGITUDE)
+    start = datetime(2007, 6, 1, tzinfo=timezone.utc)
+    end = datetime(2007, 6, 30, 23, tzinfo=timezone.utc)
+
+    joined, _warnings = location.load_data(
+        start, end, variables=("temperature", "ghi")
+    )
+    station, _warnings = location.load_data(start, end, variables=("temperature",))
+    grid, _warnings = location.load_data(start, end, variables=("ghi",))
+
+    assert joined.index.equals(station.index)
+    assert joined.index.equals(grid.index)
+    pd.testing.assert_series_equal(joined.temperature, station.temperature)
+    pd.testing.assert_series_equal(joined.ghi, grid.ghi)
 
 
 def test_location_sources_accepts_single_string():
@@ -277,6 +378,7 @@ def test_location_from_place():
 
     assert location.latitude == pytest.approx(34.168, abs=0.001)
     assert location.longitude == pytest.approx(-118.123, abs=0.001)
+    assert [source.name for source in location.sources] == ["ghcnh", "nasa-power"]
 
 
 def test_location_pinned_normals(

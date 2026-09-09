@@ -179,6 +179,23 @@ def test_station_wrong_kind_source_raises():
         WeatherStation("USW00093134", sources=("tmy3",))
 
 
+def test_station_location_keyed_source_raises():
+    # nasa-power addresses a grid cell, not a station: the station
+    # surface rejects it by name rather than failing later on a missing
+    # identifier namespace
+    with pytest.raises(ValueError, match="location-keyed"):
+        WeatherStation("USW00093134", sources=("ghcnh", "nasa-power"))
+
+
+def test_station_pinned_location_keyed_source_raises():
+    station = WeatherStation("USW00093134")
+    start = datetime(2007, 6, 1, tzinfo=timezone.utc)
+    end = datetime(2007, 6, 2, tzinfo=timezone.utc)
+
+    with pytest.raises(ValueError, match="location-keyed"):
+        station.load_data(start, end, source="nasa-power", variables=("ghi",))
+
+
 class _TwoVariableFeed(Feed):
     """A test double whose default is two variables, so a pinned load with
     variables=None must yield both columns."""

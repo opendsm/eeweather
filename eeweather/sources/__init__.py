@@ -1,8 +1,8 @@
 """Weather-data sources and estimation strategies.
 
 A *source* is a provider of weather data. Strings name the built-in
-sources (``"ghcnh"``, ``"tmy3"``, ``"cz2010"``); configured or custom
-sources are objects. Station-keyed external data plugs in through the
+sources (``"ghcnh"``, ``"nasa-power"``, ``"tmy3"``, ``"cz2010"``);
+configured or custom sources are objects. Station-keyed external data plugs in through the
 :class:`Feed` protocol; location-keyed (gridded) data implements
 :class:`Source` directly.
 """

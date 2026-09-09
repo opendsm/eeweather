@@ -9,6 +9,7 @@ from .registry.identifiers import translate as _translate
 from .registry.metadata import get_station_metadata
 from .registry.quality import get_station_quality
 from .registry.summaries import search_stations
+from .sources.engine import _station_keyed_or_raise
 from .sources.engine import load_data as _engine_load_data
 from .sources.engine import resolve_source
 
@@ -18,9 +19,11 @@ __all__ = ("WeatherStation",)
 
 
 def _validate_sources(sources):
-    """Reject a preference tuple with a duplicate or non-observation
-    source; routing only ever considers observation sources."""
+    """Reject a preference tuple with a duplicate, location-keyed, or
+    non-observation source; a station routes only station-keyed
+    observation sources."""
     adapters = [resolve_source(source) for source in sources]
+    _station_keyed_or_raise(adapters)
     names = [adapter.name for adapter in adapters]
     if len(set(names)) != len(names):
         raise ValueError(
