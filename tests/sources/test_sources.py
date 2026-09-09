@@ -58,7 +58,94 @@ def test_variables_accessor():
     assert df.loc["temperature", "sources"] == ("cz2010", "ghcnh", "tmy3")
     assert df.loc["wind_speed", "sources"] == ("ghcnh",)
     assert set(df.columns) == {"unit", "description", "aggregation", "sources"}
-    assert (df.aggregation == "mean").all()
+    assert df.loc["temperature", "aggregation"] == "mean"
+    assert df.loc["precipitation", "aggregation"] == "sum"
+
+
+@pytest.mark.parametrize(
+    "name,unit,aggregation",
+    [
+        ("ghi", "W/m2", "mean"),
+        ("clearsky_ghi", "W/m2", "mean"),
+        ("dni", "W/m2", "mean"),
+        ("clearsky_dni", "W/m2", "mean"),
+        ("dhi", "W/m2", "mean"),
+        ("clearsky_dhi", "W/m2", "mean"),
+        ("bhi", "W/m2", "mean"),
+        ("clearsky_bhi", "W/m2", "mean"),
+        ("longwave_down", "W/m2", "mean"),
+        ("longwave_up", "W/m2", "mean"),
+        ("albedo", "1", "mean"),
+        ("airmass", "1", "mean"),
+        ("aerosol_optical_depth_550", "1", "mean"),
+        ("aerosol_optical_depth_840", "1", "mean"),
+        ("snow_cover", "1", "mean"),
+        ("precipitable_water", "cm", "mean"),
+        ("cloud_cover", "%", "mean"),
+        ("specific_humidity", "g/kg", "mean"),
+        ("skin_temperature", "degC", "mean"),
+        ("soil_temperature", "degC", "mean"),
+        ("eastward_wind", "m/s", "mean"),
+        ("northward_wind", "m/s", "mean"),
+        ("surface_roughness", "m", "mean"),
+        ("surface_pressure", "hPa", "mean"),
+        ("precipitation", "mm", "sum"),
+        ("snowfall", "mm", "sum"),
+    ],
+)
+def test_power_source_canonical_variables_resolve(name, unit, aggregation):
+    entry = vocabulary.all_variables()[name]
+
+    assert entry.unit == unit
+    assert entry.aggregation == aggregation
+
+
+def test_only_accumulations_aggregate_by_sum():
+    sum_names = {
+        name
+        for name, entry in vocabulary.all_variables().items()
+        if entry.aggregation == "sum"
+    }
+
+    assert sum_names == {"precipitation", "snowfall"}
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "ghi",
+        "clearsky_ghi",
+        "dni",
+        "clearsky_dni",
+        "dhi",
+        "clearsky_dhi",
+        "bhi",
+        "clearsky_bhi",
+        "longwave_down",
+        "longwave_up",
+        "albedo",
+        "airmass",
+        "aerosol_optical_depth_550",
+        "aerosol_optical_depth_840",
+        "snow_cover",
+        "precipitable_water",
+        "cloud_cover",
+        "specific_humidity",
+        "skin_temperature",
+        "soil_temperature",
+        "eastward_wind",
+        "northward_wind",
+        "surface_roughness",
+        "surface_pressure",
+        "precipitation",
+        "snowfall",
+    ],
+)
+def test_register_rejects_new_canonical_names(name, clean_registry):
+    entry = Variable(name, "bogus-unit", "A bogus re-registration.", "mean")
+
+    with pytest.raises(ValueError, match="canonical"):
+        register(FixtureFeed(), vocabulary=(entry,))
 
 
 class FixtureFeed(Feed):
@@ -291,8 +378,8 @@ class SoilFeed(Feed):
 
     name = "soil-feed"
     id_namespace = "ghcn"
-    variables = ("soil_temperature",)
-    default_variables = ("soil_temperature",)
+    variables = ("soil_moisture",)
+    default_variables = ("soil_moisture",)
     cacheable = False
 
     def fetch_year(self, external_id, year, variables):
@@ -306,7 +393,7 @@ class SoilFeed(Feed):
 
 
 SOIL_VOCABULARY = (
-    Variable("soil_temperature", "degC", "Soil temperature at 10 cm depth.", "mean"),
+    Variable("soil_moisture", "degC", "Soil moisture at 10 cm depth.", "mean"),
 )
 
 
@@ -317,12 +404,12 @@ def test_registered_vocabulary_serves_new_variable(clean_registry):
 
     df, warnings = load_data(
         "USW00093134", start, end,
-        source="soil-feed", variables=("soil_temperature",),
+        source="soil-feed", variables=("soil_moisture",),
     )
 
-    assert list(df.columns) == ["soil_temperature"]
-    assert (df.soil_temperature == 10.0).all()
-    assert df.attrs["provenance"]["soil-feed"].variables == ("soil_temperature",)
+    assert list(df.columns) == ["soil_moisture"]
+    assert (df.soil_moisture == 10.0).all()
+    assert df.attrs["provenance"]["soil-feed"].variables == ("soil_moisture",)
 
 
 def test_registered_variable_routes_to_its_source(clean_registry):
@@ -334,7 +421,7 @@ def test_registered_variable_routes_to_its_source(clean_registry):
 
     df, warnings = load_data(
         "USW00093134", start, end,
-        sources=("ghcnh", "soil-feed"), variables=("soil_temperature",),
+        sources=("ghcnh", "soil-feed"), variables=("soil_moisture",),
     )
 
     assert list(df.attrs["provenance"]) == ["soil-feed"]
@@ -345,8 +432,8 @@ def test_registered_variable_appears_in_discovery(clean_registry):
 
     df = variables()
 
-    assert df.loc["soil_temperature", "unit"] == "degC"
-    assert df.loc["soil_temperature", "sources"] == ("soil-feed",)
+    assert df.loc["soil_moisture", "unit"] == "degC"
+    assert df.loc["soil_moisture", "sources"] == ("soil-feed",)
 
 
 def test_register_vocabulary_rejects_canonical_names(clean_registry):
@@ -363,7 +450,7 @@ def test_register_vocabulary_requires_agreement_across_sources(clean_registry):
         name = "other-soil"
 
     disagreeing = (
-        Variable("soil_temperature", "K", "Soil temperature at 10 cm depth.", "mean"),
+        Variable("soil_moisture", "K", "Soil moisture at 10 cm depth.", "mean"),
     )
     with pytest.raises(ValueError, match="definitions must agree"):
         register(OtherSoilFeed(), vocabulary=disagreeing)
@@ -371,7 +458,7 @@ def test_register_vocabulary_requires_agreement_across_sources(clean_registry):
     # an identical definition is fine
     register(OtherSoilFeed(), vocabulary=SOIL_VOCABULARY)
 
-    assert sources_serving("soil_temperature") == ["other-soil", "soil-feed"]
+    assert sources_serving("soil_moisture") == ["other-soil", "soil-feed"]
 
 
 def test_register_rejects_undeclared_variables(clean_registry):
@@ -446,13 +533,13 @@ def test_monthly_frequency_aggregates_by_vocabulary(clean_registry):
     )
     soil, _ = load_data(
         "USW00093134", start, end,
-        frequency="MS", source="soil-feed", variables=("soil_temperature",),
+        frequency="MS", source="soil-feed", variables=("soil_moisture",),
     )
 
     assert len(rain) == 12
     assert rain.index[1] == datetime(2007, 2, 1, tzinfo=timezone.utc)
     assert rain.rainfall.iloc[1] == 28 * 24.0
-    assert (soil.soil_temperature == 10.0).all()
+    assert (soil.soil_moisture == 10.0).all()
 
 
 def test_annual_frequency_aggregates_by_vocabulary(clean_registry):
@@ -476,7 +563,7 @@ def test_monthly_frequency_excludes_partial_start_month(clean_registry):
 
     df, warnings = load_data(
         "USW00093134", start, end,
-        frequency="MS", source="soil-feed", variables=("soil_temperature",),
+        frequency="MS", source="soil-feed", variables=("soil_moisture",),
     )
 
     assert df.index[0] == datetime(2007, 2, 1, tzinfo=timezone.utc)
@@ -512,11 +599,11 @@ def test_subhourly_interpolates_point_in_time_variables(clean_registry):
 
     df, warnings = load_data(
         "USW00093134", start, end,
-        frequency="30min", source="soil-feed", variables=("soil_temperature",),
+        frequency="30min", source="soil-feed", variables=("soil_moisture",),
     )
 
     assert df.index.freqstr == "30min"
-    assert (df.soil_temperature == 10.0).all()
+    assert (df.soil_moisture == 10.0).all()
 
 
 def test_subhourly_never_crosses_a_missing_hour(clean_registry):
@@ -547,7 +634,7 @@ def test_subhourly_frequency_must_divide_the_hour(clean_registry):
         load_data(
             "USW00093134", start, end,
             frequency="25min", source="soil-feed",
-            variables=("soil_temperature",),
+            variables=("soil_moisture",),
         )
 
 
@@ -560,5 +647,5 @@ def test_frequency_nomenclature_is_validated_by_pandas(clean_registry):
         load_data(
             "USW00093134", start, end,
             frequency="fortnightly", source="soil-feed",
-            variables=("soil_temperature",),
+            variables=("soil_moisture",),
         )
