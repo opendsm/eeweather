@@ -1,4 +1,5 @@
 import gzip
+import json
 import os
 import re
 import tempfile
@@ -11,6 +12,8 @@ import pytest
 os.environ["EEWEATHER_AUTO_UPDATE"] = "0"
 
 from eeweather.cache import KeyValueStore
+from eeweather.sources.nasa_power.source import API_URL as POWER_API_URL
+from eeweather.sources.nasa_power.source import FAMILY_PARAMETERS
 
 
 
@@ -58,6 +61,64 @@ def mock_api_transport(monkeypatch):
         return mock_get(url, params=params, **kwargs)
 
     monkeypatch.setattr("eeweather.sources.ghcnh.source._get", mock_session_get)
+
+
+class MockPowerAPIResponse:
+    def __init__(self, payload):
+        self.payload = payload
+        self.status_code = 200
+        self.headers = {}
+
+    def json(self):
+        return self.payload
+
+    def raise_for_status(self):
+        pass
+
+
+def _power_family(names):
+    for family, parameters in FAMILY_PARAMETERS.items():
+        if names[0] in {parameter.native for parameter in parameters}:
+            return family
+
+    raise AssertionError("unknown POWER parameter: {}".format(names[0]))
+
+
+@pytest.fixture
+def mock_nasa_power_transport(monkeypatch):
+    """Serve captured NASA POWER payloads for all POWER api requests.
+
+    Fixture files are real responses recorded from the api, keyed by the
+    parameter family, the requested point, and the requested year. A
+    request with no matching fixture fails the test; no request reaches
+    the network.
+    """
+
+    def mock_get(url, params=None, **kwargs):
+        assert url == POWER_API_URL, "unexpected url: {}".format(url)
+        family = _power_family(params["parameters"].split(","))
+        year = params["start"][:4]
+        names = (
+            "nasa_power_{}_{}_{}_{}.json.gz".format(
+                family, params["latitude"], params["longitude"], year
+            ),
+            "nasa_power_{}_edge_{}.json.gz".format(family, year),
+        )
+        for name in names:
+            path = FIXTURE_DIR / name
+            if path.exists():
+                with gzip.open(path, "rb") as f:
+                    payload = json.loads(f.read().decode())
+
+                return MockPowerAPIResponse(payload)
+
+        raise AssertionError(
+            "no captured fixture for {}; tests must not hit the network".format(
+                " or ".join(names)
+            )
+        )
+
+    monkeypatch.setattr("eeweather.sources.nasa_power.source._get", mock_get)
 
 
 def _fixture_ascii(name):

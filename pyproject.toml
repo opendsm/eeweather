@@ -54,6 +54,9 @@ path = "eeweather/__version__.py"
 packages = ["eeweather"]
 
 [tool.pytest.ini_options]
+markers = [
+  "live: exercises the real NASA POWER API; set EEWEATHER_LIVE_TESTS=1 to run",
+]
 # --cov / --cov-report are off by default to keep normal runs fast; coverage
 # runs via `tox -e coverage`.
 addopts = [

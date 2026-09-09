@@ -9,7 +9,8 @@ import pandas as pd
 from .registry.summaries import get_place
 from .registry.zones import zones_at
 from .sources import StationSource
-from .sources.engine import known_source_names, resolve_source, _route, _validate_requested
+from .sources.engine import known_source_names, resolve_source, _route
+from .sources.pipeline import validate_requested
 from .sources.matching import rank_stations
 
 
@@ -274,7 +275,7 @@ class WeatherLocation(object):
         if variables is None:
             variables = ("temperature",)
         groups, requested = _route(variables, self.sources)
-        _validate_requested(requested)
+        validate_requested(requested)
 
         frames = []
         warnings = []

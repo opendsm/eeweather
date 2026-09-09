@@ -9,6 +9,8 @@ subclass them.
 from __future__ import annotations
 
 import time
+
+from collections import namedtuple
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
@@ -17,6 +19,32 @@ import requests
 from ..exceptions import DataNotAvailableError
 from ..registry.db import metadata_db_connection_proxy
 
+
+
+_ProvenanceFields = namedtuple(
+    "Provenance",
+    ["kind", "source", "variables", "station_id", "distance_meters", "payload"],
+)
+
+
+class Provenance(_ProvenanceFields):
+    """How a value was produced. Station fields are None for non-station
+    sources; ``payload`` is always a dict, empty unless the source adds
+    source-specific detail (e.g. a grid cell or interpolation method)."""
+    __slots__ = ()
+
+    def __new__(
+        cls, kind, source, variables,
+        station_id=None, distance_meters=None, payload=None,
+    ):
+        if payload is None:
+            payload = {}
+
+        record = super().__new__(
+            cls, kind, source, variables, station_id, distance_meters, payload
+        )
+
+        return record
 
 
 class Source(object):

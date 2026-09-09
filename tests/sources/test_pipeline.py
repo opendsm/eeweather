@@ -2,20 +2,23 @@ import contextlib
 import functools
 import sqlite3
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pandas as pd
+import pytest
 import pytz
 
 from eeweather.cache import CacheVolatility
 from eeweather.sources.engine import _fetch_year, observation_cache_key
 from eeweather.sources.ghcnh import GHCNhSource
 from eeweather.sources.pipeline import (
+    _datetime_is_utc,
     align_to_range,
     data_gap_warnings,
     deserialize_hourly_data,
     load_year,
     read_cached_year,
+    requested_variables,
     resample_by_vocabulary,
     serialize_hourly_data,
 )
@@ -364,6 +367,45 @@ def test_load_year_without_write_leaves_the_cache_empty(
     cached, _, _ = read_cached_year(CACHE_KEY, 2007)
 
     assert cached is None
+
+
+# request validation: the checks every source path applies
+
+
+def test_datetime_is_utc_accepts_utc():
+    assert _datetime_is_utc(datetime(2020, 1, 1, tzinfo=pytz.UTC)) is True
+    assert _datetime_is_utc(datetime(2020, 1, 1, tzinfo=timezone.utc)) is True
+
+
+def test_datetime_is_utc_rejects_naive():
+    assert _datetime_is_utc(datetime(2020, 1, 1)) is False
+
+
+def test_datetime_is_utc_rejects_offsets():
+    assert _datetime_is_utc(
+        datetime(2020, 1, 1, tzinfo=timezone(timedelta(hours=5)))
+    ) is False
+    assert _datetime_is_utc(
+        datetime(2020, 1, 1, tzinfo=timezone(timedelta(hours=-8)))
+    ) is False
+
+
+def test_requested_variables_defaults_to_the_sources_defaults():
+    assert requested_variables(GHCNH, None) == GHCNH.default_variables
+
+
+def test_requested_variables_expands_all_to_the_whole_vocabulary():
+    assert requested_variables(GHCNH, "all") == tuple(GHCNH.variables)
+
+
+def test_requested_variables_rejects_a_variable_the_source_does_not_serve():
+    with pytest.raises(ValueError, match="does not serve: ghi"):
+        requested_variables(GHCNH, ("temperature", "ghi"))
+
+
+def test_requested_variables_rejects_duplicates():
+    with pytest.raises(ValueError, match="Duplicate variables"):
+        requested_variables(GHCNH, ("temperature", "temperature"))
 
 
 # range alignment: the shared index every source path produces

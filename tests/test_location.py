@@ -10,8 +10,8 @@ from eeweather import WeatherLocation
 from eeweather.exceptions import DataNotAvailableError
 from eeweather.sources import Feed, Source, StationSource, Variable, register
 from eeweather.sources import engine, vocabulary
+from eeweather.sources.base import Provenance
 from eeweather.sources.engine import (
-    Provenance,
     known_source_names,
     resolve_source,
     sources_serving,

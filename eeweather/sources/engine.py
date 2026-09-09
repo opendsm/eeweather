@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import functools
 
-from collections import namedtuple
 from datetime import datetime, timezone
 
 import pandas as pd
@@ -25,6 +24,7 @@ import eeweather.cache
 from ..exceptions import DataNotAvailableError, EEWeatherWarning
 from ..registry.identifiers import translate
 from ..registry.update import maybe_update
+from .base import Provenance
 from .cz2010 import CZ2010Source
 from .ghcnh import GHCNhSource
 from .pipeline import (
@@ -32,9 +32,12 @@ from .pipeline import (
     data_gap_warnings,
     deserialize_hourly_data,
     load_year,
+    requested_variables,
     resample_by_vocabulary,
     serialize_hourly_data,
     store,
+    validate_range,
+    validate_requested,
 )
 from .tmy3 import TMY3Source
 from .vocabulary import (
@@ -150,61 +153,6 @@ def sources_serving(variable):
 
     return names
 
-
-
-_ProvenanceFields = namedtuple(
-    "Provenance",
-    ["kind", "source", "variables", "station_id", "distance_meters", "payload"],
-)
-
-
-class Provenance(_ProvenanceFields):
-    """How a value was produced. Station fields are None for non-station
-    sources; ``payload`` is always a dict, empty unless the source adds
-    source-specific detail (e.g. a grid cell or interpolation method)."""
-    __slots__ = ()
-
-    def __new__(
-        cls, kind, source, variables,
-        station_id=None, distance_meters=None, payload=None,
-    ):
-        if payload is None:
-            payload = {}
-
-        record = super().__new__(
-            cls, kind, source, variables, station_id, distance_meters, payload
-        )
-
-        return record
-
-
-def _datetime_is_utc(dt):
-    if dt.tzinfo is None:
-        return False
-
-    return dt.utcoffset().total_seconds() == 0
-
-
-def _validate_range(start, end):
-    if not _datetime_is_utc(start):
-        raise ValueError(
-            "start must be an explicit-UTC datetime, got: {}".format(start)
-        )
-    if not _datetime_is_utc(end):
-        raise ValueError("end must be an explicit-UTC datetime, got: {}".format(end))
-    if start > end:
-        raise ValueError(
-            "start must not be after end, got: {} > {}".format(start, end)
-        )
-
-
-def _validate_requested(variables):
-    if len(variables) == 0:
-        raise ValueError("At least one variable must be requested.")
-    if len(set(variables)) != len(variables):
-        raise ValueError(
-            "Duplicate variables requested: {}".format(", ".join(variables))
-        )
 
 
 def _external_id(adapter, station_id):
@@ -486,7 +434,7 @@ def load_data(
         each source used to a Provenance record.
     """
     maybe_update()
-    _validate_range(start, end)
+    validate_range(start, end)
 
     # the frequency vocabulary is pandas', bound by delegation: pandas
     # parses the alias, so its spellings, deprecations, and renames apply
@@ -498,20 +446,7 @@ def load_data(
         raise_when_empty = pinned
     if pinned:
         adapter = resolve_source(source)
-        if variables is None:
-            variables = tuple(adapter.default_variables)
-        elif variables == "all":
-            variables = tuple(adapter.variables)
-        _validate_requested(tuple(variables))
-        unservable = [v for v in variables if v not in adapter.variables]
-        if unservable:
-            raise ValueError(
-                "Source '{}' does not serve: {}. It serves: {}.".format(
-                    adapter.name,
-                    ", ".join(unservable),
-                    ", ".join(adapter.variables),
-                )
-            )
+        variables = requested_variables(adapter, variables)
         groups = {adapter: list(variables)}
         requested = tuple(variables)
     else:
@@ -519,7 +454,7 @@ def load_data(
             variables = ("temperature",)
         adapters = [resolve_source(entry) for entry in sources]
         groups, requested = _route(variables, adapters)
-        _validate_requested(requested)
+        validate_requested(requested)
 
     warnings = []
     frames = []
