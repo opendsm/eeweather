@@ -13,7 +13,7 @@ weather is estimated by the configured sources, and each requested variable
 routes to the first source in the preference tuple that serves it.
 
 ```python
-WeatherLocation(latitude, longitude, sources=("ghcnh",), pins=None)
+WeatherLocation(latitude, longitude, sources=("ghcnh", "nasa-power"), pins=None)
 ```
 
 - `sources` — ordered source preference: built-in names (`"ghcnh"`), custom
@@ -22,8 +22,9 @@ WeatherLocation(latitude, longitude, sources=("ghcnh",), pins=None)
   written by hand: pins are captured automatically from provenance at load
   time and round-trip through `to_dict`/`from_dict`.
 
-**`from_place(kind, code, sources=("ghcnh",))`** — construct from a coded
-place, e.g. `from_place("zcta", "91104")` for a ZIP code tabulation area.
+**`from_place(kind, code, sources=("ghcnh", "nasa-power"))`** — construct
+from a coded place, e.g. `from_place("zcta", "91104")` for a ZIP code
+tabulation area.
 
 **`load_data(start, end, frequency="h", variables=None, source=None,
 ignore_disqualification=False, **load_kwargs)`** — weather between two
@@ -140,6 +141,21 @@ month-day-hour (leap days are NaN).
 Applies the 150 km distance cap and quality/coverage checks by default;
 configure via `rank_kwargs`/`select_kwargs`.
 
+**`"nasa-power"`** — the built-in grid source, reached only through
+`WeatherLocation` (location-keyed, no station identifiers). It serves two
+independently-latent grids: a meteorological grid (`temperature`,
+`dew_point_temperature`, `relative_humidity`, `wind_speed`,
+`specific_humidity`, `skin_temperature`, `soil_temperature`,
+`eastward_wind`, `northward_wind`, `surface_roughness`,
+`surface_pressure`, `precipitation`, `snowfall`, `snow_cover`; hourly
+since 2001, roughly two days behind real time) and a solar grid (`ghi`,
+`dni`, `dhi`, `bhi` and their `clearsky_*` counterparts, `albedo`,
+`longwave_down`, `longwave_up`, `airmass`, `aerosol_optical_depth_550`,
+`aerosol_optical_depth_840`, `precipitable_water`, `cloud_cover`; hourly
+since 2001, roughly three months behind real time, rolling forward as
+new months publish). A load that runs past a grid's published edge
+raises the `"eeweather.source_latency"` warning below.
+
 **`Variable(name, unit, description, aggregation)`** — a vocabulary entry;
 `aggregation` is one of `"mean"`, `"sum"`, `"min"`, `"max"`.
 
@@ -152,6 +168,40 @@ definitions must agree across sources.
 
 **`variables()`** — the vocabulary as a DataFrame: name, unit, description,
 aggregation, and the sources serving each entry.
+
+**`wind_direction(eastward_wind, northward_wind)`** — meteorological wind
+direction in degrees, the direction the wind blows *from* measured
+clockwise from north (0/360 north, 90 east, 180 south, 270 west), by
+`atan2` on the two components. `eastward_wind` and `northward_wind` must
+already be aggregated (e.g. to daily or monthly means) before calling
+this: direction is circular, so the vector mean of the components taken
+first, then converted to a direction, is the only correct order —
+averaging directions themselves is not meaningful. A zero vector (calm)
+or a NaN input returns NaN. Accepts scalars or array-likes.
+
+The vocabulary's new canonical variables, added for the solar and
+meteorological grids above: `ghi`/`dni`/`dhi`/`bhi` and
+`clearsky_ghi`/`clearsky_dni`/`clearsky_dhi`/`clearsky_bhi` [W/m2] — `dhi`
+plus `bhi` closes to `ghi` to rounding at high sun and degrades in the
+sunrise/sunset hour, and no irradiance component is ever derived from the
+other two. Validation against shoreline ground stations found the solar
+grid's one-degree cells read systematically sunnier than a coast under a
+marine layer (tens of W/m² of high bias, against near-zero bias inland):
+treat grid `ghi` on a stratus-prone coastline as biased high; the `clearsky_*` fields are a computed clearsky model driven by
+hourly aerosol and water-vapor inputs, jittery and not a monotone ceiling
+on the all-sky value, and not a substitute for a deterministic clearsky
+model. `airmass` [1] is relative (Kasten) airmass, not pressure-corrected,
+undefined at night. `albedo` [1] is undefined at night — nightly gaps are
+normal, not errors. `longwave_down`/`longwave_up` [W/m2],
+`aerosol_optical_depth_550`/`aerosol_optical_depth_840` [1],
+`precipitable_water` [cm], `cloud_cover` [%], `specific_humidity` [g/kg],
+and `skin_temperature` [degC]. `soil_temperature` [degC] and `snow_cover`
+[1] are undefined over ocean (land-only fields). `eastward_wind`/
+`northward_wind` [m/s] and `surface_roughness` [m]. `surface_pressure`
+[hPa] is pressure at the grid cell's model topography — a different
+physical reference from `station_level_pressure`, tens of hPa apart in
+terrain, and never aliased to it. `precipitation` [mm] is gauge-bias-
+corrected at the grid's coarse cells. `snowfall` [mm].
 
 ---
 
@@ -180,7 +230,9 @@ All errors subclass **`EEWeatherError`**:
 
 **`EEWeatherWarning`** — the structured warning returned by loads (not a
 Python `warnings` category): `qualified_name` (e.g.
-`"eeweather.data_gap"`), human-readable `description`, and a `data` dict.
+`"eeweather.data_gap"`, or `"eeweather.source_latency"` when a grid
+source's requested range runs past a family's published edge), a
+human-readable `description`, and a `data` dict.
 
 ---
 

@@ -65,6 +65,40 @@ This release is a redesign; the public API is not compatible with 0.3.x.
   validate like canonical ones. Canonical names are reserved and
   definitions must agree across sources, so a registered variable's
   unit is frozen at first registration.
+* Weather at a point can also be estimated from NASA POWER
+  (`"nasa-power"`), a location-keyed grid source reached through
+  `WeatherLocation` (station-keyed surfaces reject it with a clear
+  error). Two independently-latent grids serve it: a meteorological grid
+  (temperature, dew point, relative humidity, wind speed, specific
+  humidity, skin and soil temperature, eastward/northward wind, surface
+  roughness, surface pressure, precipitation, snowfall, snow cover;
+  hourly since 2001, roughly two days behind real time) and a solar grid
+  (ghi/dni/dhi/bhi and their clearsky counterparts, albedo, longwave up
+  and down, airmass, aerosol optical depth at 550 and 840 nm,
+  precipitable water, cloud cover; hourly since 2001, roughly three
+  months behind real time). A load whose range runs past a grid's
+  published edge raises the `eeweather.source_latency` warning.
+* New canonical variables: `ghi`/`dni`/`dhi`/`bhi` and
+  `clearsky_ghi`/`clearsky_dni`/`clearsky_dhi`/`clearsky_bhi` [W/m2]
+  (dhi plus bhi closes to ghi to rounding at high sun and degrades near
+  sunrise/sunset, and no component is ever derived from the other two;
+  the clearsky fields are a computed clearsky model, jittery and not a
+  ceiling on the all-sky value), `albedo` [1] and `airmass` [1] (both
+  undefined at night), `longwave_down`/`longwave_up` [W/m2],
+  `aerosol_optical_depth_550`/`aerosol_optical_depth_840` [1],
+  `precipitable_water` [cm], `cloud_cover` [%], `specific_humidity`
+  [g/kg], `skin_temperature` [degC], `soil_temperature` [degC, undefined
+  over ocean], `eastward_wind`/`northward_wind` [m/s],
+  `surface_roughness` [m], `surface_pressure` [hPa] (pressure at the
+  grid cell's model topography, a different physical reference from
+  `station_level_pressure`), `precipitation` [mm] (gauge-bias-corrected),
+  `snowfall` [mm], and `snow_cover` [1, undefined over ocean].
+  `eeweather.sources.wind_direction(eastward_wind, northward_wind)`
+  derives meteorological wind direction from already-aggregated wind
+  components.
+* `WeatherLocation`'s default sources become `("ghcnh", "nasa-power")`;
+  a default-constructed location's `variables="all"` load now expands to
+  roughly thirty columns and reaches NASA POWER as well as GHCNh.
 * Packaged data is split by ownership: the registry holds the
   identifier crosswalk (`identifiers.db`) and regional geography packs
   (`geography_us.db`: zone geometries, ZCTA places, zone assignments);
