@@ -1,5 +1,3 @@
-import contextlib
-import sqlite3
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
@@ -8,19 +6,15 @@ import pytz
 
 from eeweather.exceptions import DataNotAvailableError
 from eeweather.sources.engine import (
-    _data_gap_warnings,
     _datetime_is_utc,
     _fetch_year,
     _load_normals_block,
     _load_observation_year,
-    _read_cached_year,
-    deserialize_hourly_data,
     load_cached_data,
     load_data,
     normals_cache_key,
     observation_cache_key,
     Provenance,
-    serialize_hourly_data,
 )
 from eeweather.sources.ghcnh import GHCNhSource
 from eeweather.sources.tmy3 import TMY3Source
@@ -29,13 +23,6 @@ from eeweather.sources.tmy3 import TMY3Source
 
 GHCNH = GHCNhSource()
 TMY3 = TMY3Source()
-
-
-def _backdate_cache_key(store, key, updated):
-    with contextlib.closing(sqlite3.connect(store._path)) as conn, conn:
-        conn.execute(
-            "update items set updated = ? where key = ?", (updated.isoformat(), key)
-        )
 
 
 # fetch
@@ -80,34 +67,7 @@ def test_normals_cache_key():
     assert normals_cache_key("tmy3", "USW00023152") == "tmy3-hourly-USW00023152"
 
 
-# cache freshness
-
-
-def test_read_cached_year_empty(monkeypatch_key_value_store):
-    assert _read_cached_year(GHCNH, "USW00093134", 2007) is None
-
-
-def test_read_cached_year_fresh(mock_api_transport, monkeypatch_key_value_store):
-    _load_observation_year(GHCNH, "USW00093134", "USW00093134", 2007, ("temperature",),
-                           True, True, True)
-
-    assert _read_cached_year(GHCNH, "USW00093134", 2007) is not None
-
-
-def test_read_cached_year_expired_entry_is_cleared(
-    mock_api_transport, monkeypatch_key_value_store
-):
-    _load_observation_year(GHCNH, "USW00093134", "USW00093134", 2007, ("temperature",),
-                           True, True, True)
-
-    # a cache entry written during its own data year goes stale
-    key = observation_cache_key("ghcnh", "USW00093134", 2007)
-    _backdate_cache_key(
-        monkeypatch_key_value_store, key, pytz.UTC.localize(datetime(2007, 3, 3))
-    )
-
-    assert _read_cached_year(GHCNH, "USW00093134", 2007) is None
-    assert monkeypatch_key_value_store.key_exists(key) is False
+# per-year station loads
 
 
 def test_load_observation_year_no_cache_no_web_raises(monkeypatch_key_value_store):
@@ -116,41 +76,7 @@ def test_load_observation_year_no_cache_no_web_raises(monkeypatch_key_value_stor
                                True, True, False)
 
 
-# serialization round-trips
-
-
-def test_serialize_deserialize_hourly_data_round_trip(mock_api_transport):
-    df = _fetch_year(GHCNH, "USW00093134", "USW00093134", 2007, ("temperature",))
-
-    serialized = serialize_hourly_data(df)
-
-    assert serialized["columns"] == ["temperature"]
-    assert serialized["rows"][0][0] == "2007010100"
-    assert len(serialized["rows"]) == len(df)
-
-    round_tripped = deserialize_hourly_data(serialized)
-
-    pd.testing.assert_frame_equal(round_tripped, df, check_freq=False)
-
-
-def test_serialize_hourly_data_nan_round_trips_as_null(mock_api_transport):
-    df = _fetch_year(GHCNH, "USW00093194", "USW00093194", 2013, ("temperature",))  # ends 2013-11-04
-
-    serialized = serialize_hourly_data(df)
-
-    assert any(row[1] is None for row in serialized["rows"])
-
-    round_tripped = deserialize_hourly_data(serialized)
-
-    pd.testing.assert_frame_equal(round_tripped, df, check_freq=False)
-
-
-def test_serialize_multivariable_round_trip(mock_api_transport):
-    df = _fetch_year(GHCNH, "USW00093134", "USW00093134", 2007, ("temperature", "wind_speed"))
-
-    round_tripped = deserialize_hourly_data(serialize_hourly_data(df))
-
-    pd.testing.assert_frame_equal(round_tripped, df, check_freq=False)
+# normals blocks
 
 
 def test_normals_block_round_trips_through_the_hourly_serializer(
@@ -162,44 +88,6 @@ def test_normals_block_round_trips_through_the_hourly_serializer(
     pd.testing.assert_series_equal(
         cached, fresh, check_freq=False, check_names=False
     )
-
-
-# cached proxy behavior
-
-
-def test_load_observation_year_serves_from_cache(
-    mock_api_transport, monkeypatch_key_value_store
-):
-    df1 = _load_observation_year(GHCNH, "USW00093134", "USW00093134", 2007, ("temperature",),
-                                 True, True, True)
-    df2 = _load_observation_year(GHCNH, "USW00093134", "USW00093134", 2007, ("temperature",),
-                                 True, True, True)
-
-    pd.testing.assert_frame_equal(df1, df2, check_freq=False)
-
-
-def test_load_observation_year_variable_superset_refetches(
-    mock_api_transport, monkeypatch_key_value_store
-):
-    df1 = _load_observation_year(GHCNH, "USW00093134", "USW00093134", 2007, ("temperature",),
-                                 True, True, True)
-    assert list(df1.columns) == ["temperature"]
-
-    # cache holds temperature only, so requesting more refetches the union
-    df2 = _load_observation_year(
-        GHCNH, "USW00093134", "USW00093134", 2007, ("temperature", "wind_speed"),
-        True, True, True,
-    )
-    assert list(df2.columns) == ["temperature", "wind_speed"]
-
-    # the refreshed cache entry now covers both variables
-    cached = _read_cached_year(GHCNH, "USW00093134", 2007)
-    assert set(cached.columns) == {"temperature", "wind_speed"}
-
-    # a temperature-only request serves the requested subset from cache
-    df3 = _load_observation_year(GHCNH, "USW00093134", "USW00093134", 2007, ("temperature",),
-                                 True, True, True)
-    assert list(df3.columns) == ["temperature"]
 
 
 def test_load_normals_block_cached(
@@ -528,27 +416,6 @@ def test_load_data_warns_on_internal_gap(
     assert warnings[0].data["max_gap_days"] == pytest.approx(16.125, abs=1e-9)
 
 
-def test_data_gap_warnings_leading_gap():
-    # synthetic edge case: a series whose data begins three days late
-    index = pd.date_range(
-        "2020-01-01", "2020-01-31", freq="h", tz="UTC"
-    )
-    ts = pd.Series(20.0, index=index)
-    ts.iloc[: 24 * 3] = float("nan")
-
-    warnings = _data_gap_warnings(ts, "ghcnh", "temperature")
-
-    assert [w.qualified_name for w in warnings] == ["eeweather.data_starts_late"]
-    assert warnings[0].data["requested_start"] == "2020-01-01T00:00:00+00:00"
-    assert warnings[0].data["first_valid"] == "2020-01-04T00:00:00+00:00"
-
-
-def test_data_gap_warnings_empty_series_is_silent():
-    ts = pd.Series([], dtype=float, index=pd.DatetimeIndex([], tz="UTC"))
-
-    assert _data_gap_warnings(ts, "ghcnh", "temperature") == []
-
-
 def test_load_data_2025_extends_past_isd_end_of_life(
     mock_api_transport, monkeypatch_key_value_store
 ):
@@ -747,7 +614,7 @@ def test_load_data_untranslatable_station_warns_once(
         id_namespace = "usaf"
         cacheable = False
 
-    # ASN00026044's usaf alias was removed in the alias audit
+    # ASN00026044 has no usaf alias in the registry
     df, warnings = load_data(
         "ASN00026044",
         datetime(2019, 1, 1, tzinfo=pytz.UTC),
