@@ -38,6 +38,134 @@ VARIABLES = {
             "mean",
         ),
         Variable("visibility", "km", "Horizontal visibility distance.", "mean"),
+        Variable(
+            "ghi",
+            "W/m2",
+            "Global horizontal irradiance.",
+            "mean",
+        ),
+        Variable(
+            "clearsky_ghi",
+            "W/m2",
+            "Computed Fu-Liou clearsky global horizontal irradiance, driven by hourly"
+            " aerosol and water-vapor inputs. It is jittery and is not an upper bound on"
+            " the all-sky value (cloud enhancement is real), and is not a substitute for"
+            " a deterministic clearsky model.",
+            "mean",
+        ),
+        Variable("dni", "W/m2", "Direct normal irradiance.", "mean"),
+        Variable(
+            "clearsky_dni",
+            "W/m2",
+            "Computed Fu-Liou clearsky direct normal irradiance, driven by hourly"
+            " aerosol and water-vapor inputs. It is jittery and is not an upper bound on"
+            " the all-sky value (cloud enhancement is real), and is not a substitute for"
+            " a deterministic clearsky model.",
+            "mean",
+        ),
+        Variable(
+            "dhi",
+            "W/m2",
+            "Diffuse horizontal irradiance. ghi equals dhi plus bhi to rounding at high"
+            " sun and degrades in the sunrise/sunset hour; no component may be derived"
+            " from the other two.",
+            "mean",
+        ),
+        Variable(
+            "clearsky_dhi",
+            "W/m2",
+            "Computed Fu-Liou clearsky diffuse horizontal irradiance, driven by hourly"
+            " aerosol and water-vapor inputs. It is jittery and is not an upper bound on"
+            " the all-sky value (cloud enhancement is real), and is not a substitute for"
+            " a deterministic clearsky model.",
+            "mean",
+        ),
+        Variable(
+            "bhi",
+            "W/m2",
+            "Direct horizontal irradiance. ghi equals dhi plus bhi to rounding at high"
+            " sun and degrades in the sunrise/sunset hour; no component may be derived"
+            " from the other two.",
+            "mean",
+        ),
+        Variable(
+            "clearsky_bhi",
+            "W/m2",
+            "Computed Fu-Liou clearsky direct horizontal irradiance, driven by hourly"
+            " aerosol and water-vapor inputs. It is jittery and is not an upper bound on"
+            " the all-sky value (cloud enhancement is real), and is not a substitute for"
+            " a deterministic clearsky model.",
+            "mean",
+        ),
+        Variable("longwave_down", "W/m2", "Downwelling longwave irradiance.", "mean"),
+        Variable("longwave_up", "W/m2", "Upwelling longwave irradiance.", "mean"),
+        Variable(
+            "albedo",
+            "1",
+            "Surface albedo. Undefined at night; nightly gaps are normal, not errors.",
+            "mean",
+        ),
+        Variable(
+            "airmass",
+            "1",
+            "Kasten relative airmass. Not pressure-corrected, and undefined at night.",
+            "mean",
+        ),
+        Variable(
+            "aerosol_optical_depth_550",
+            "1",
+            "Aerosol optical depth at 550 nm.",
+            "mean",
+        ),
+        Variable(
+            "aerosol_optical_depth_840",
+            "1",
+            "Aerosol optical depth at 840 nm.",
+            "mean",
+        ),
+        Variable(
+            "snow_cover",
+            "1",
+            "Fractional snow cover. Undefined over ocean.",
+            "mean",
+        ),
+        Variable("precipitable_water", "cm", "Total precipitable water.", "mean"),
+        Variable("cloud_cover", "%", "Cloud cover.", "mean"),
+        Variable("specific_humidity", "g/kg", "Specific humidity.", "mean"),
+        Variable("skin_temperature", "degC", "Skin temperature.", "mean"),
+        Variable(
+            "soil_temperature",
+            "degC",
+            "Top soil layer temperature. Undefined over ocean.",
+            "mean",
+        ),
+        Variable("eastward_wind", "m/s", "Eastward wind component.", "mean"),
+        Variable("northward_wind", "m/s", "Northward wind component.", "mean"),
+        Variable("surface_roughness", "m", "Surface roughness length.", "mean"),
+        Variable(
+            "surface_pressure",
+            "hPa",
+            "Atmospheric pressure at the model topography of the grid cell. This is a"
+            " different physical reference from station_level_pressure (tens of hPa"
+            " apart in terrain); the two are separate variables and must never be"
+            " aliased.",
+            "mean",
+        ),
+        Variable(
+            "precipitation",
+            "mm",
+            "Gauge-bias-corrected precipitation depth.",
+            "sum",
+        ),
+        Variable(
+            "snowfall",
+            "mm",
+            "Snowfall as liquid water equivalent, not accumulated snow depth."
+            " Produced independently of precipitation (which is gauge-bias"
+            " corrected), so snowfall can exceed precipitation; never"
+            " difference the two.",
+            "sum",
+        ),
     )
 }
 

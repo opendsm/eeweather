@@ -7,6 +7,7 @@ sources are objects. Station-keyed external data plugs in through the
 :class:`Source` directly.
 """
 from .base import Feed, NormalsSource, Source
+from .derivations import wind_direction
 from .engine import register, variables
 from .station_source import StationSource
 from .vocabulary import Variable
@@ -21,4 +22,5 @@ __all__ = (
     "Variable",
     "register",
     "variables",
+    "wind_direction",
 )
