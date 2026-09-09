@@ -3,9 +3,9 @@
 Owns everything between an adapter's fetch and the frame a user receives:
 variable routing, per-year caching with variable-union refresh,
 typical-year tiling, range alignment, frequency aggregation, gap
-warnings, and provenance. Frames for one request range and frequency
-always share an identical UTC index regardless of source, so they join
-safely.
+warnings, and provenance. The mechanics every source path shares live in
+``pipeline``; frames for one request range and frequency always share an
+identical UTC index regardless of source, so they join safely.
 
 Missing-data semantics: partial coverage (missing years, station gaps)
 surfaces as NaN values plus warnings. A pinned source with nothing at all
@@ -14,8 +14,10 @@ raises for missing data.
 """
 from __future__ import annotations
 
+import functools
+
 from collections import namedtuple
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import pandas as pd
 
@@ -25,6 +27,15 @@ from ..registry.identifiers import translate
 from ..registry.update import maybe_update
 from .cz2010 import CZ2010Source
 from .ghcnh import GHCNhSource
+from .pipeline import (
+    align_to_range,
+    data_gap_warnings,
+    deserialize_hourly_data,
+    load_year,
+    resample_by_vocabulary,
+    serialize_hourly_data,
+    store,
+)
 from .tmy3 import TMY3Source
 from .vocabulary import (
     aggregation_for,
@@ -141,10 +152,6 @@ def sources_serving(variable):
 
 
 
-TRAILING_GAP_WARNING_THRESHOLD = timedelta(days=1)
-LEADING_GAP_WARNING_THRESHOLD = timedelta(days=1)
-INTERNAL_GAP_WARNING_THRESHOLD = timedelta(days=7)
-
 _ProvenanceFields = namedtuple(
     "Provenance",
     ["kind", "source", "variables", "station_id", "distance_meters", "payload"],
@@ -169,10 +176,6 @@ class Provenance(_ProvenanceFields):
         )
 
         return record
-
-
-def _store():
-    return eeweather.cache.key_value_store_proxy.get_store()
 
 
 def _datetime_is_utc(dt):
@@ -217,138 +220,11 @@ def _external_id(adapter, station_id):
     return external_ids[0]
 
 
-def _data_gap_warnings(ts, source, variable):
-    """EEWeatherWarnings for requested ranges the returned data does not
-    cover: entirely empty series, late-starting or early-ending data, and
-    long internal gaps."""
-    warnings = []
-    if len(ts) == 0:
-        return warnings
-
-    if ts.isna().all():
-        warnings.append(
-            EEWeatherWarning(
-                qualified_name="eeweather.no_data_in_requested_range",
-                description="No data was available within the requested range.",
-                data={
-                    "source": source,
-                    "variable": variable,
-                    "requested_start": ts.index[0].isoformat(),
-                    "requested_end": ts.index[-1].isoformat(),
-                },
-            )
-        )
-
-        return warnings
-
-    first_valid = ts.first_valid_index()
-    leading_gap = first_valid - ts.index[0]
-    if leading_gap > LEADING_GAP_WARNING_THRESHOLD:
-        warnings.append(
-            EEWeatherWarning(
-                qualified_name="eeweather.data_starts_late",
-                description=(
-                    "Data begins {} after the start of the requested"
-                    " range.".format(leading_gap)
-                ),
-                data={
-                    "source": source,
-                    "variable": variable,
-                    "first_valid": first_valid.isoformat(),
-                    "requested_start": ts.index[0].isoformat(),
-                },
-            )
-        )
-
-    last_valid = ts.last_valid_index()
-    trailing_gap = ts.index[-1] - last_valid
-    if trailing_gap > TRAILING_GAP_WARNING_THRESHOLD:
-        warnings.append(
-            EEWeatherWarning(
-                qualified_name="eeweather.data_truncated",
-                description=(
-                    "Data ends {} before the end of the requested range.".format(
-                        trailing_gap
-                    )
-                ),
-                data={
-                    "source": source,
-                    "variable": variable,
-                    "last_valid": last_valid.isoformat(),
-                    "requested_end": ts.index[-1].isoformat(),
-                },
-            )
-        )
-
-    interior = ts.loc[first_valid:last_valid]
-    if len(interior) > 1:
-        period = interior.index[1] - interior.index[0]
-        is_missing = interior.isna()
-        max_gap_periods = int(is_missing.groupby((~is_missing).cumsum()).sum().max())
-        max_gap = max_gap_periods * period
-        if max_gap > INTERNAL_GAP_WARNING_THRESHOLD:
-            warnings.append(
-                EEWeatherWarning(
-                    qualified_name="eeweather.data_gap",
-                    description=(
-                        "Data contains an internal gap of {}.".format(max_gap)
-                    ),
-                    data={
-                        "source": source,
-                        "variable": variable,
-                        "max_gap_days": max_gap / timedelta(days=1),
-                    },
-                )
-            )
-
-    return warnings
-
-
 # observation caching: one JSON block per (source, station, year)
 
 
 def observation_cache_key(source_name, station_id, year):
     return "{}-hourly-{}-{}".format(source_name, station_id, year)
-
-
-def serialize_hourly_data(df):
-    rows = [
-        [index.strftime("%Y%m%d%H")] + values
-        for index, values in zip(
-            df.index, df.astype(object).where(df.notna(), None).values.tolist()
-        )
-    ]
-    serialized = {"columns": list(df.columns), "rows": rows}
-
-    return serialized
-
-
-def deserialize_hourly_data(data):
-    index = pd.to_datetime(
-        [row[0] for row in data["rows"]], format="%Y%m%d%H", utc=True
-    )
-    df = pd.DataFrame(
-        [row[1:] for row in data["rows"]],
-        index=index,
-        columns=data["columns"],
-        dtype=float,
-    )
-
-    return df.sort_index().resample("h").mean()
-
-
-def _read_cached_year(adapter, station_id, year):
-    """The fresh cached block for a station-year, or None."""
-    store = _store()
-    key = observation_cache_key(adapter.name, station_id, year)
-    if not store.key_exists(key):
-        return None
-    if eeweather.cache._expired(store.key_updated(key), year):
-        store.clear(key)
-
-        return None
-
-    return deserialize_hourly_data(store.retrieve_json(key))
 
 
 def _fetch_year(adapter, station_id, external_id, year, variables):
@@ -387,36 +263,21 @@ def _load_observation_year(
     adapter, station_id, external_id, year, variables,
     read_from_cache, write_to_cache, fetch_from_web,
 ):
-    """One year of hourly data, from cache when it covers the request.
+    """One year of hourly data for a station, from cache when it covers
+    the request.
 
-    A cache entry serves the request when it is fresh and holds every
-    requested variable. Fetches request the union of the requested and
-    already-cached variables so a cache refresh never drops columns.
+    Raises DataNotAvailableError when only a fetch could serve the
+    request and fetching is disabled.
     """
-    cached = None
-    if adapter.cacheable:
-        cached = _read_cached_year(adapter, station_id, year)
-
-    cache_covers_request = cached is not None and set(variables) <= set(cached.columns)
-    if read_from_cache and cache_covers_request:
-        return cached[list(variables)]
-
-    if not fetch_from_web:
+    fetch = functools.partial(_fetch_year, adapter, station_id, external_id, year)
+    df = load_year(
+        observation_cache_key(adapter.name, station_id, year), year, variables, fetch,
+        adapter.cacheable, read_from_cache, write_to_cache, fetch_from_web,
+    )
+    if df is None:
         raise DataNotAvailableError(adapter.name, station_id=station_id, year=year)
 
-    if cached is None:
-        cached_columns = ()
-    else:
-        cached_columns = tuple(cached.columns)
-    fetch_variables = tuple(dict.fromkeys(variables + cached_columns))
-    df = _fetch_year(adapter, station_id, external_id, year, fetch_variables)
-    if adapter.cacheable and write_to_cache:
-        _store().save_json(
-            observation_cache_key(adapter.name, station_id, year),
-            serialize_hourly_data(df),
-        )
-
-    return df.reindex(columns=list(variables))
+    return df
 
 
 def _load_observations(
@@ -490,13 +351,13 @@ def normals_cache_key(source_name, station_id):
 def _load_normals_block(
     adapter, station_id, read_from_cache, write_to_cache, fetch_from_web
 ):
-    store = _store()
+    cache = store()
     key = normals_cache_key(adapter.name, station_id)
-    cached_ok = adapter.cacheable and store.key_exists(key)
+    cached_ok = adapter.cacheable and cache.key_exists(key)
     column = adapter.variables[0]
 
     if read_from_cache and cached_ok:
-        cached = deserialize_hourly_data(store.retrieve_json(key))
+        cached, _ = deserialize_hourly_data(cache.retrieve_json(key))
 
         return cached[column]
 
@@ -505,7 +366,7 @@ def _load_normals_block(
 
     ts = adapter.fetch(station_id)
     if adapter.cacheable and write_to_cache:
-        store.save_json(key, serialize_hourly_data(ts.to_frame(name=column)))
+        cache.save_json(key, serialize_hourly_data(ts.to_frame(name=column)))
 
     return ts
 
@@ -687,22 +548,8 @@ def load_data(
 
     df = pd.concat(frames, axis=1)[list(requested)]
     if offset != pd.tseries.frequencies.to_offset("h"):
-        df = _resample_by_vocabulary(df, offset)
-    df = df[start:end]
-
-    # start and end dates need to fall exactly on period boundaries; a
-    # period partially before start is excluded, end's period is included
-    if isinstance(offset, pd.tseries.offsets.Tick):
-        range_start = pd.Timestamp(start).ceil(offset)
-        range_end = pd.Timestamp(end).floor(offset)
-    else:
-        range_start = offset.rollforward(pd.Timestamp(start).normalize())
-        if range_start < pd.Timestamp(start):
-            range_start = range_start + offset
-        range_end = offset.rollback(pd.Timestamp(end).normalize())
-
-    # cover the full requested range even when no data loaded
-    df = df.reindex(pd.date_range(range_start, range_end, freq=offset))
+        df = resample_by_vocabulary(df, offset)
+    df = align_to_range(df, start, end, offset)
 
     # nothing at all for the requested dates (not merely the requested
     # calendar years) raises for pinned requests
@@ -712,7 +559,7 @@ def load_data(
 
     for adapter, group_variables in groups.items():
         for variable in group_variables:
-            warnings.extend(_data_gap_warnings(df[variable], adapter.name, variable))
+            warnings.extend(data_gap_warnings(df[variable], adapter.name, variable))
 
     df.attrs["provenance"] = provenance
 
@@ -723,74 +570,20 @@ def load_cached_data(station_id, source_name="ghcnh"):
     """All fresh cached hourly observations for a station from one
     source, or None when nothing is cached. Applies the same staleness
     rule as loads."""
-    store = _store()
+    cache = store()
     prefix = "{}-hourly-{}-".format(source_name, station_id)
     data = []
-    for key in store.keys(prefix):
+    for key in cache.keys(prefix):
         year = int(key.rsplit("-", 1)[1])
-        if eeweather.cache._expired(store.key_updated(key), year):
+        if eeweather.cache._expired(cache.key_updated(key), year):
             continue
-        data.append(deserialize_hourly_data(store.retrieve_json(key)))
+        block, _ = deserialize_hourly_data(cache.retrieve_json(key))
+        data.append(block)
     if not data:
         return None
     df = pd.concat(data).resample("h").mean()
 
     return df
-
-
-def _resample_by_vocabulary(df, offset):
-    """Hourly values at the requested frequency, column by column.
-
-    Coarser periods roll up by the column's vocabulary aggregation; a
-    period with no data at all is NaN regardless of aggregation. Every
-    label is its period's start. Sub-hourly slots interpolate
-    point-in-time columns linearly between hourly values and spread
-    accumulations evenly, never crossing a missing hour.
-    """
-    if isinstance(offset, pd.tseries.offsets.Tick) and (
-        pd.Timedelta(offset) < pd.Timedelta(hours=1)
-    ):
-        return _upsample(df, offset)
-
-    resampled = df.resample(offset, label="left", closed="left")
-    columns = {}
-    for column in df.columns:
-        aggregation = aggregation_for(column)
-        if aggregation == "sum":
-            columns[column] = resampled[column].sum(min_count=1)
-        else:
-            columns[column] = getattr(resampled[column], aggregation)()
-    aggregated = pd.DataFrame(columns)
-
-    return aggregated
-
-
-def _upsample(df, offset):
-    """Hourly values at a finer frequency; the offset must divide the
-    hour evenly."""
-    step = pd.Timedelta(offset)
-    if pd.Timedelta(hours=1) % step != pd.Timedelta(0):
-        raise ValueError(
-            "A sub-hourly frequency must divide the hour evenly,"
-            " got: {}".format(offset.freqstr)
-        )
-    slots = int(pd.Timedelta(hours=1) / step)
-
-    up = df.resample(offset).asfreq()
-    columns = {}
-    for column in df.columns:
-        if aggregation_for(column) == "sum":
-            spread = df[column].reindex(up.index, method="ffill", limit=slots - 1)
-            columns[column] = spread / slots
-        else:
-            filled = up[column].interpolate(method="linear", limit_area="inside")
-            valid = df[column].notna()
-            left_valid = valid.reindex(up.index, method="ffill")
-            right_valid = valid.reindex(up.index, method="bfill")
-            columns[column] = filled.where(left_valid & right_valid)
-    upsampled = pd.DataFrame(columns)
-
-    return upsampled
 
 
 def variables() -> pd.DataFrame:

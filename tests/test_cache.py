@@ -1,6 +1,12 @@
 import tempfile
 
-from eeweather.cache import KeyValueStore, _expired, key_value_store_proxy, set_path
+from eeweather.cache import (
+    YEAR_END_GRACE_DAYS,
+    KeyValueStore,
+    _expired,
+    key_value_store_proxy,
+    set_path,
+)
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -109,3 +115,34 @@ def test_not_expired_when_updated_during_data_year_and_fresh():
     last_updated = now - timedelta(hours=1)
 
     assert _expired(last_updated, last_updated.year) is False
+
+
+def test_expired_defaults_to_the_year_end_grace_window():
+    # station sources pass no grace days: 30 days after year end is
+    # past the 14-day window, so the year counts as settled
+    last_updated = datetime(2021, 1, 31, tzinfo=timezone.utc)
+
+    assert _expired(last_updated, 2020) is False
+    assert _expired(last_updated, 2020, YEAR_END_GRACE_DAYS) is False
+
+
+def test_expired_with_a_longer_grace_window_keeps_the_year_volatile():
+    # the same entry under a source whose data for the year is still
+    # arriving four months later
+    last_updated = datetime(2021, 1, 31, tzinfo=timezone.utc)
+
+    assert _expired(last_updated, 2020, 120) is True
+
+
+def test_expired_when_still_arriving_past_the_grace_window():
+    last_updated = datetime.now(timezone.utc) - timedelta(days=2)
+
+    assert _expired(last_updated, 2020) is False
+    assert _expired(last_updated, 2020, still_arriving=True) is True
+
+
+def test_not_expired_when_still_arriving_but_written_today():
+    # still-arriving data is refreshable, not refetched on every read
+    last_updated = datetime.now(timezone.utc) - timedelta(hours=1)
+
+    assert _expired(last_updated, 2020, still_arriving=True) is False

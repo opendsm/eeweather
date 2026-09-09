@@ -11,6 +11,8 @@ import json
 import os
 import sqlite3
 
+from typing import NamedTuple
+
 import platformdirs
 
 
@@ -22,6 +24,21 @@ DATA_EXPIRATION_DAYS = 1
 # a data year keeps arriving for a while after it ends (publication lag),
 # so entries written shortly after year end stay refreshable
 YEAR_END_GRACE_DAYS = 14
+
+
+class CacheVolatility(NamedTuple):
+    """How long one source keeps rewriting a cached data year.
+
+    ``grace_days`` is how long after year end that source's data for the
+    year keeps arriving. ``missing_tail_is_volatile`` marks a block whose
+    trailing rows are entirely missing as still arriving whatever its
+    age, for sources that publish a year's tail months late; leave it
+    false where a missing tail is a permanent property of the series,
+    such as a station that stopped reporting.
+    """
+
+    grace_days: int = YEAR_END_GRACE_DAYS
+    missing_tail_is_volatile: bool = False
 
 
 def _sqlite_path_from_url(url):
@@ -164,11 +181,15 @@ def clear() -> None:
     key_value_store_proxy.get_store().clear()
 
 
-def _expired(last_updated, year):
+def _expired(last_updated, year, grace_days=YEAR_END_GRACE_DAYS, still_arriving=False):
     """Whether a cache entry for a data year is stale: entries written
     while the year's data was still arriving (during the year, or within
-    YEAR_END_GRACE_DAYS after it ends) expire after
-    DATA_EXPIRATION_DAYS."""
+    grace_days after it ends) expire after DATA_EXPIRATION_DAYS.
+
+    A caller that can see the entry itself passes still_arriving to keep
+    it refreshable past that window, for a block the source has not
+    finished filling in.
+    """
     if last_updated is None:
         return True
     expiration_limit = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
@@ -176,7 +197,7 @@ def _expired(last_updated, year):
     )
     volatile_until = datetime.datetime(
         year + 1, 1, 1, tzinfo=datetime.timezone.utc
-    ) + datetime.timedelta(days=YEAR_END_GRACE_DAYS)
-    still_volatile = last_updated < volatile_until
+    ) + datetime.timedelta(days=grace_days)
+    still_volatile = still_arriving or last_updated < volatile_until
 
     return expiration_limit > last_updated and still_volatile
