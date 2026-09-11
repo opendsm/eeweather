@@ -8,6 +8,8 @@ frequency share an identical UTC index and join safely.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import timedelta
 
 import pandas as pd
@@ -22,6 +24,29 @@ from .vocabulary import aggregation_for
 TRAILING_GAP_WARNING_THRESHOLD = timedelta(days=1)
 LEADING_GAP_WARNING_THRESHOLD = timedelta(days=1)
 INTERNAL_GAP_WARNING_THRESHOLD = timedelta(days=7)
+
+
+# A transport failure can make load_year serve a stale cached block instead
+# of failing; that is invisible in the returned frame, so the fact is
+# recorded here and read by the engine when it builds provenance. Within a
+# ``collecting_stale`` block, load_year notes each data year it served stale.
+_stale_years = ContextVar("eeweather_stale_years", default=None)
+
+
+@contextmanager
+def collecting_stale():
+    """Collect the data years served stale by load_year inside this block."""
+    token = _stale_years.set([])
+    try:
+        yield _stale_years.get()
+    finally:
+        _stale_years.reset(token)
+
+
+def _note_stale(year):
+    ledger = _stale_years.get()
+    if ledger is not None:
+        ledger.append(year)
 
 
 def _datetime_is_utc(dt):
@@ -205,6 +230,7 @@ def load_year(
         if read_from_cache and cached is not None and set(variables) <= set(
             cached.columns
         ):
+            _note_stale(year)
             return cached[list(variables)]
         raise
     if cacheable and write_to_cache:

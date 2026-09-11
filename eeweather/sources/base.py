@@ -23,25 +23,30 @@ from ..registry.db import metadata_db_connection_proxy
 
 _ProvenanceFields = namedtuple(
     "Provenance",
-    ["kind", "source", "variables", "station_id", "distance_meters", "payload"],
+    ["kind", "source", "variables", "station_id", "distance_meters", "payload",
+     "stale"],
 )
 
 
 class Provenance(_ProvenanceFields):
     """How a value was produced. Station fields are None for non-station
     sources; ``payload`` is always a dict, empty unless the source adds
-    source-specific detail (e.g. a grid cell or interpolation method)."""
+    source-specific detail (e.g. a grid cell or interpolation method).
+    ``stale`` is True when a transport failure made the source serve cached
+    data past its freshness deadline rather than let the failure propagate;
+    staleness is a property of the returned data, so it is recorded here."""
     __slots__ = ()
 
     def __new__(
         cls, kind, source, variables,
-        station_id=None, distance_meters=None, payload=None,
+        station_id=None, distance_meters=None, payload=None, stale=False,
     ):
         if payload is None:
             payload = {}
 
         record = super().__new__(
-            cls, kind, source, variables, station_id, distance_meters, payload
+            cls, kind, source, variables, station_id, distance_meters, payload,
+            stale,
         )
 
         return record
@@ -112,12 +117,14 @@ REQUEST_RETRY_BACKOFF_SECONDS = 5
 REQUEST_TIMEOUT_SECONDS = 120
 
 
-def request_text(url):
+def request_text(url, *, source="request", station_id=None, year=None):
     """Fetch a url's text, retrying connection errors and server errors
     with growing backoff; client errors raise immediately.
 
     Transport failures are raised as :class:`~eeweather.exceptions.FetchError`
-    so callers need not import ``requests`` to catch them.
+    so callers need not import ``requests`` to catch them. Pass ``source``
+    (and ``station_id``/``year`` where they apply) so the error names what
+    was being fetched rather than the generic ``"request"``.
 
     Honours an ambient fetch budget: the attempt loop stops when the budget
     is spent, socket timeouts are capped at what is left, and backoff never
@@ -132,11 +139,15 @@ def request_text(url):
             response.raise_for_status()
         except requests.HTTPError as error:
             if response.status_code < 500 or attempt == REQUEST_TRIES - 1:
-                raise FetchError("request", cause=error) from error
+                raise FetchError(
+                    source, station_id=station_id, year=year, cause=error
+                ) from error
             budget.sleep_within(REQUEST_RETRY_BACKOFF_SECONDS * (attempt + 1))
         except requests.RequestException as error:
             if attempt == REQUEST_TRIES - 1:
-                raise FetchError("request", cause=error) from error
+                raise FetchError(
+                    source, station_id=station_id, year=year, cause=error
+                ) from error
             budget.sleep_within(REQUEST_RETRY_BACKOFF_SECONDS * (attempt + 1))
         else:
             return response.text
@@ -232,7 +243,7 @@ class NormalsSource(object):
         archive = self.archive_station(station_id)
         url = self._url(archive["usaf_id"])
         try:
-            text = request_text(url)
+            text = request_text(url, source=self.name, station_id=station_id)
         except FetchError as error:
             # a missing archive file is absent data, not a transport failure
             if error.status_code == 404:

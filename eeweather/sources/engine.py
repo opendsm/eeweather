@@ -31,6 +31,7 @@ from .nasa_power import NASAPowerSource
 from .budget import fetch_budget
 from .pipeline import (
     align_to_range,
+    collecting_stale,
     data_gap_warnings,
     deserialize_hourly_data,
     load_year,
@@ -516,10 +517,11 @@ def _load_data(
             loader = _load_normals
         else:
             raise ValueError("Unknown source kind: {}".format(adapter.kind))
-        group_df, group_warnings = loader(
-            adapter, station_id, start, end, tuple(group_variables),
-            read_from_cache, write_to_cache, fetch_from_web,
-        )
+        with collecting_stale() as stale_years:
+            group_df, group_warnings = loader(
+                adapter, station_id, start, end, tuple(group_variables),
+                read_from_cache, write_to_cache, fetch_from_web,
+            )
         warnings.extend(group_warnings)
         frames.append(group_df)
         provenance[adapter.name] = Provenance(
@@ -529,6 +531,7 @@ def _load_data(
             station_id=station_id,
             distance_meters=None,
             payload={},
+            stale=bool(stale_years),
         )
 
     df = pd.concat(frames, axis=1)[list(requested)]

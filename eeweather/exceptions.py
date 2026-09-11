@@ -139,6 +139,7 @@ class FetchError(EEWeatherError):
 
         return None if response is None else response.status_code
 
+
 class FetchDeadlineExceeded(EEWeatherError):
     """Raised when a request's fetch budget runs out.
 

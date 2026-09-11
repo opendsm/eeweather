@@ -9,6 +9,7 @@ import pandas as pd
 from .registry.summaries import get_place
 from .registry.zones import zones_at
 from .sources import StationSource
+from .sources.budget import fetch_budget
 from .sources.engine import known_source_names, resolve_source, _route
 from .sources.pipeline import validate_requested
 from .sources.matching import rank_stations
@@ -236,6 +237,7 @@ class WeatherLocation(object):
         variables=None,
         source=None,
         ignore_disqualification: bool = False,
+        deadline: float | None = None,
         **load_kwargs,
     ):
         """Weather at this location between two dates (inclusive).
@@ -249,6 +251,11 @@ class WeatherLocation(object):
         ``self.provenance`` and the frame's ``attrs["provenance"]``,
         keyed by source name.
 
+        ``deadline`` bounds the wall-clock seconds this request may spend
+        on the network, after which it raises FetchDeadlineExceeded;
+        unbounded by default. It applies to every source this load
+        touches, station-based and grid alike.
+
         Returns
         -------
         tuple of (pandas.DataFrame, list of EEWeatherWarning)
@@ -261,17 +268,18 @@ class WeatherLocation(object):
             )
         if source is not None:
             estimation_source = self._station_source(source)
-            df, warnings, provenance = estimation_source.estimate(
-                self.latitude,
-                self.longitude,
-                start,
-                end,
-                frequency=frequency,
-                variables=variables,
-                raise_when_empty=True,
-                ignore_disqualification=ignore_disqualification,
-                **self._pinned_kwargs(estimation_source, load_kwargs),
-            )
+            with fetch_budget(deadline):
+                df, warnings, provenance = estimation_source.estimate(
+                    self.latitude,
+                    self.longitude,
+                    start,
+                    end,
+                    frequency=frequency,
+                    variables=variables,
+                    raise_when_empty=True,
+                    ignore_disqualification=ignore_disqualification,
+                    **self._pinned_kwargs(estimation_source, load_kwargs),
+                )
             df.attrs["provenance"] = provenance
             self.provenance = provenance
             self._capture_pins(provenance)
@@ -288,21 +296,22 @@ class WeatherLocation(object):
         frames = []
         warnings = []
         provenance = {}
-        for estimation_source, group_variables in groups.items():
-            df, group_warnings, group_provenance = estimation_source.estimate(
-                self.latitude,
-                self.longitude,
-                start,
-                end,
-                frequency=frequency,
-                variables=tuple(group_variables),
-                raise_when_empty=False,
-                ignore_disqualification=ignore_disqualification,
-                **self._pinned_kwargs(estimation_source, load_kwargs),
-            )
-            frames.append(df)
-            warnings.extend(group_warnings)
-            provenance.update(group_provenance)
+        with fetch_budget(deadline):
+            for estimation_source, group_variables in groups.items():
+                df, group_warnings, group_provenance = estimation_source.estimate(
+                    self.latitude,
+                    self.longitude,
+                    start,
+                    end,
+                    frequency=frequency,
+                    variables=tuple(group_variables),
+                    raise_when_empty=False,
+                    ignore_disqualification=ignore_disqualification,
+                    **self._pinned_kwargs(estimation_source, load_kwargs),
+                )
+                frames.append(df)
+                warnings.extend(group_warnings)
+                provenance.update(group_provenance)
 
         df = pd.concat(frames, axis=1)[list(requested)]
         df.attrs["provenance"] = provenance

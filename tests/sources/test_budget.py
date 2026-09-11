@@ -12,7 +12,7 @@ import pytest
 import pytz
 import requests
 
-from eeweather.exceptions import EEWeatherError, FetchDeadlineExceeded
+from eeweather.exceptions import EEWeatherError, FetchDeadlineExceeded, FetchError
 from eeweather.sources import base, budget
 from eeweather.sources.engine import load_data
 
@@ -138,6 +138,25 @@ def test_request_text_stops_retrying_when_the_budget_runs_out(monkeypatch):
     assert 1 <= len(attempts) < base.REQUEST_TRIES
     # and never asked a socket for longer than the budget could afford
     assert all(t <= 0.08 for t in attempts)
+
+
+def test_request_text_names_the_source_and_station_in_its_error(monkeypatch):
+    """A transport failure reads as the real fetch, not the generic
+    "request data for station=None"."""
+    def boom(url, timeout=None):
+        raise requests.ConnectionError("no route")
+
+    monkeypatch.setattr(base.requests, "get", boom)
+
+    with pytest.raises(FetchError) as excinfo:
+        base.request_text(
+            "https://example.invalid/data", source="tmy3", station_id="USW00023152"
+        )
+
+    message = str(excinfo.value)
+    assert "tmy3" in message
+    assert "USW00023152" in message
+    assert "station=None" not in message
 
 
 def test_request_text_is_unbounded_without_a_budget(monkeypatch):

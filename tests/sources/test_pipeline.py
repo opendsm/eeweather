@@ -16,6 +16,7 @@ from eeweather.sources.ghcnh import GHCNhSource
 from eeweather.sources.pipeline import (
     _datetime_is_utc,
     align_to_range,
+    collecting_stale,
     data_gap_warnings,
     deserialize_hourly_data,
     load_year,
@@ -569,6 +570,40 @@ def test_load_year_serves_stale_data_when_the_fetch_fails(
     assert df is not None
     assert list(df.columns) == ["temperature"]
     assert df.temperature.notna().any()
+
+
+def test_load_year_notes_the_year_it_served_stale(monkeypatch_key_value_store):
+    """The stale serve is invisible in the returned frame, so load_year
+    records the data year for the caller building provenance."""
+    _stale_2007_block(monkeypatch_key_value_store)
+
+    def failing_fetch(variables):
+        raise FetchError("ghcnh", station_id=STATION, year=2007)
+
+    with collecting_stale() as stale_years:
+        df = load_year(
+            CACHE_KEY, 2007, ("temperature",), failing_fetch, True,
+            True, True, True, LATE_PUBLISHING,
+        )
+
+    assert df is not None
+    assert stale_years == [2007]
+
+
+def test_load_year_notes_nothing_on_a_successful_fetch(monkeypatch_key_value_store):
+    _stale_2007_block(monkeypatch_key_value_store)
+
+    def good_fetch(variables):
+        frame = _hourly_frame("2007-01-01", "2007-12-31 23:00", value=11.0)
+        return frame[list(variables)]
+
+    with collecting_stale() as stale_years:
+        load_year(
+            CACHE_KEY, 2007, ("temperature",), good_fetch, True,
+            True, True, True, LATE_PUBLISHING,
+        )
+
+    assert stale_years == []
 
 
 def test_load_year_reraises_fetch_error_when_nothing_is_cached(
