@@ -29,11 +29,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# rebuilding the geography pack reads the Census state shapefile; a
-# maintenance-only dependency, not needed to use the package
-build = [
-  "pyshp",
-]
 dev = [
   "black",
   "coverage",
@@ -42,7 +37,6 @@ dev = [
   "pytest-cov",
   "pytest-xdist",
   "ruff",
-  "pyshp",
   "syrupy>=5,<6",
   "tox",
 ]

@@ -41,7 +41,6 @@ from .db import (
     PACKAGED_IDENTIFIERS_DB_PATH,
     UPDATED_DATA_DIR,
     data_path,
-    packaged_geography_packs,
 )
 
 
@@ -51,12 +50,14 @@ UPDATABLE = {
     "identifiers.db": PACKAGED_IDENTIFIERS_DB_PATH,
 }
 
-# geography is not static: Census republishes the Gazetteer annually
-GEOGRAPHY_FILENAMES = tuple(
-    os.path.basename(path) for _alias, path in packaged_geography_packs()
-)
+# geography is not static: Census republishes the Gazetteer annually. The
+# packed set is known by name, not globbed off disk, so an empty registry
+# directory (before the first build, or a partial checkout) does not drop
+# geography from the update set.
+GEOGRAPHY_FILENAMES = ("geography_us.db",)
+_REGISTRY_DIR = os.path.dirname(PACKAGED_IDENTIFIERS_DB_PATH)
 UPDATABLE.update(
-    {os.path.basename(path): path for _alias, path in packaged_geography_packs()}
+    {name: os.path.join(_REGISTRY_DIR, name) for name in GEOGRAPHY_FILENAMES}
 )
 
 # omitted from a published pack when unchanged; refresh the rest, do not abort

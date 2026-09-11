@@ -33,8 +33,11 @@ def main():
     )
     args = parser.parse_args()
 
-    if args.geography:
-        year = None if args.geography is True else int(args.geography)
+    if args.geography is not None:
+        # bare --geography (const True) and an empty value both mean "newest";
+        # keep the geography branch explicit so an empty dispatch input does
+        # not fall through to refresh() and rebuild the station registry
+        year = None if args.geography in (True, "") else int(args.geography)
         counts = build_places(year=year)
     elif args.migrate:
         counts = migrate(args.migrate[0], args.migrate[1])

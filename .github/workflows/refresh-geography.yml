@@ -26,9 +26,15 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install package
-        run: pip install -e .[dev,build]
+        run: pip install -e .[dev]
       - name: Rebuild places from Census sources
-        run: python -m eeweather.build --geography ${{ inputs.year }}
+        # the dispatch input goes through env, not interpolated into the
+        # shell of a contents:write job; ${YEAR:+$YEAR} expands to nothing
+        # when empty, so the scheduled run gets a bare --geography (newest)
+        # and a manual run gets --geography <year>
+        env:
+          YEAR: ${{ inputs.year }}
+        run: python -m eeweather.build --geography ${YEAR:+$YEAR}
       # refresh PRs opened with GITHUB_TOKEN do not trigger pull_request
       # workflows, so the suite must pass here, against the rebuilt pack
       - name: Run the test suite against the rebuilt geography
@@ -55,14 +61,15 @@ jobs:
           commit-message: Rebuild ZCTA places from Census sources
           title: Rebuild ZCTA places from Census sources
           body: |
-            Scheduled rebuild of the geography pack's ZCTA places from the
-            Census Gazetteer and cartographic state layer, stamped with the
-            vintage in `meta`. Zone geometries are static content and are
-            untouched.
+            Scheduled build of a new Census vintage of the geography pack's
+            ZCTA places, from the Gazetteer (internal points) and the
+            ZCTA-to-county relationship file (states), stamped with the
+            vintage in `meta`. Earlier vintages are retained, not replaced,
+            and zone geometries are untouched.
 
-            Review the diff in place counts and subdivisions before merging:
-            ZCTAs are added and retired every year, and the internal points
-            move.
+            Review the new vintage's place counts and subdivisions before
+            merging: ZCTAs are added and retired between decades, and the
+            internal points move year to year.
           branch: automation/refresh-geography
           delete-branch: true
           add-paths: |
