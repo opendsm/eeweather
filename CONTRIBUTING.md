@@ -43,8 +43,18 @@ python -m eeweather.build
 pytest
 ```
 
-Static content (zone geometries and assignments, places, archive
-station lists, identifier mappings) is carried forward from previously
-packaged data; `python -m eeweather.build --migrate OLD DESTDIR` builds
-the per-ownership data files (identifiers, geography pack, one per
-source) from a historical single-file database.
+The scheduled `refresh-geography` workflow rebuilds the geography
+pack's ZCTA places from Census primary sources once a year and opens a
+pull request the same way. To run it by hand:
+
+```
+pip install -e .[build]
+python -m eeweather.build --geography        # or --geography 2025
+pytest
+```
+
+Remaining static content (zone geometries, archive station lists,
+identifier mappings) is carried forward from previously packaged data;
+`python -m eeweather.build --migrate OLD DESTDIR` builds the
+per-ownership data files (identifiers, geography pack, one per source)
+from a historical single-file database.

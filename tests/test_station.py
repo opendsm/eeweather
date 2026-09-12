@@ -5,6 +5,7 @@ import pytest
 
 from eeweather import WeatherLocation, WeatherStation
 from eeweather.exceptions import UnrecognizedStationError
+from eeweather.registry.update import refreshed_at
 from eeweather.sources import Feed
 
 
@@ -161,6 +162,10 @@ def test_station_load_data_records_provenance(
     record = station.provenance["ghcnh"]
     assert record.station_id == "USW00093134"
     assert record.variables == ("temperature",)
+    # the registry snapshot the run resolved against is recorded, so the
+    # result is reproducible against the registry that produced it
+    assert record.registry_vintage == refreshed_at()
+    assert record.registry_vintage is not None
 
 
 def test_station_sources_accepts_single_string():

@@ -30,24 +30,31 @@ IDENTIFIERS_SCHEMA = (
 )
 
 GEOGRAPHY_SCHEMA = (
+    # ``vintage`` is the Census publication year the places were built from,
+    # and it leads the primary key so more than one vintage coexists in a
+    # pack: a rebuild appends the new year beside the rows earlier results
+    # were resolved against, rather than overwriting them. Readers resolve
+    # the newest vintage for a code (see registry.summaries.get_place).
     """
     create table place (
+      vintage integer not null,
       kind text not null,
       code text not null,
       country text,
       subdivision text,
       latitude real,
       longitude real,
-      primary key (kind, code)
+      primary key (vintage, kind, code)
     ) without rowid
     """,
     """
     create table place_zone (
+      vintage integer not null,
       kind text not null,
       code text not null,
       system text not null,
       zone_id text not null,
-      primary key (kind, code, system)
+      primary key (vintage, kind, code, system)
     ) without rowid
     """,
     """
