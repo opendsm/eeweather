@@ -34,6 +34,7 @@ carries. Against the 2020 ZCTA polygons, 1,833 packaged points fall outside
 their own ZCTA (median 0.46 km, worst 220 km; Ventura 93001 sits 19.18 km
 offshore) versus 42 for the Gazetteer points (worst 5.18 km).
 """
+import contextlib
 import io
 import json
 import os
@@ -292,7 +293,9 @@ def build_places(year=None, geography_path=None):
     points = fetch_zcta_points(year)
     subdivisions = fetch_zcta_states(year)
 
-    with sqlite3.connect(geography_path) as geography:
+    # a bare `with sqlite3.connect(...) as` commits but never closes the handle;
+    # closing() closes it, the inner `geography` keeps the transaction semantics
+    with contextlib.closing(sqlite3.connect(geography_path)) as geography, geography:
         _plausible_or_raise(geography, points)
 
         zone_features = _zone_features(geography)
