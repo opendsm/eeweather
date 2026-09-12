@@ -1,7 +1,6 @@
 """The NASA POWER grid source served through the POWER hourly point API."""
 import math
 import random
-import time
 
 from collections import namedtuple
 from datetime import date, datetime, timezone
@@ -9,9 +8,15 @@ from datetime import date, datetime, timezone
 import pandas as pd
 import requests
 
+from .. import budget
+
 from ...__version__ import __version__
 from ...cache import CacheVolatility
-from ...exceptions import DataNotAvailableError, EEWeatherWarning
+from ...exceptions import (
+    DataNotAvailableError,
+    EEWeatherWarning,
+    FetchError,
+)
 from ..base import Provenance, Source
 from ..pipeline import (
     align_to_range,
@@ -154,7 +159,7 @@ def _get(url, params):  # pragma: no cover (mocked in tests via this seam)
     response = _session.get(
         url=url,
         params=params,
-        timeout=API_TIMEOUT_SECONDS,
+        timeout=budget.timeout_for(API_TIMEOUT_SECONDS),
         headers={"User-Agent": USER_AGENT},
     )
 
@@ -226,10 +231,17 @@ def _request(latitude, longitude, start, end, parameters):
     }
 
     for attempt in range(API_REQUEST_TRIES):
-        response = _get(API_URL, params)
+        budget.check("nasa_power {},{}".format(latitude, longitude))
+        try:
+            response = _get(API_URL, params)
+        except requests.RequestException as error:
+            if attempt == API_REQUEST_TRIES - 1:
+                raise FetchError("nasa-power", cause=error) from error
+            budget.sleep_within(API_RETRY_BACKOFF_SECONDS * (attempt + 1))
+            continue
         if not _retryable(response.status_code) or attempt == API_REQUEST_TRIES - 1:
             break
-        time.sleep(_retry_delay(response, attempt))
+        budget.sleep_within(_retry_delay(response, attempt))
 
     if response.status_code >= 400:
         messages = _error_messages(response)

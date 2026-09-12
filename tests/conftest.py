@@ -125,7 +125,7 @@ def _fixture_ascii(name):
     return (FIXTURE_DIR / name).read_text(encoding="ascii")
 
 
-def mock_request_text_tmy3(url):
+def mock_request_text_tmy3(url, **kwargs):
     match_url = (
         "https://storage.googleapis.com/openeemeter-public-resources/"
         "tmy3_archive/722880TYA.CSV"
@@ -134,7 +134,7 @@ def mock_request_text_tmy3(url):
         return _fixture_ascii("722880TYA.CSV")
 
 
-def mock_request_text_cz2010(url):
+def mock_request_text_cz2010(url, **kwargs):
     match_url = "https://storage.googleapis.com/oee-cz2010/csv/722880_CZ2010.CSV"
 
     if re.match(match_url, url):

@@ -28,8 +28,10 @@ from .base import Provenance
 from .cz2010 import CZ2010Source
 from .ghcnh import GHCNhSource
 from .nasa_power import NASAPowerSource
+from .budget import fetch_budget
 from .pipeline import (
     align_to_range,
+    collecting_stale,
     data_gap_warnings,
     deserialize_hourly_data,
     load_year,
@@ -410,6 +412,7 @@ def load_data(
     write_to_cache: bool = True,
     fetch_from_web: bool = True,
     raise_when_empty: bool | None = None,
+    deadline: float | None = None,
 ):
     """Load a station's weather data between two dates (inclusive).
 
@@ -444,6 +447,20 @@ def load_data(
         Whether a request yielding no data at all raises
         DataNotAvailableError; defaults to True for pinned requests and
         False for routed ones (partial coverage never raises either way).
+    deadline : float, optional
+        Wall-clock seconds this request may spend on the network, after
+        which it raises FetchDeadlineExceeded. Unbounded by default,
+        which is what it has always been: every fetch path retries three
+        times at a 120 second socket timeout, per station-year, and
+        nothing caps the total -- so against an unresponsive upstream a
+        large run does not fail visibly, it runs for days.
+
+        The bound is on fetching, not on cached reads or computation,
+        and it is approximate at the edge: socket timeouts are capped at
+        the remaining budget, so a request can overshoot by up to one
+        timeout. A deadline raises rather than returning what it managed
+        to collect, deliberately -- partial weather that looks complete
+        is the failure this is meant to make visible.
 
     Returns
     -------
@@ -453,7 +470,19 @@ def load_data(
         without data are NaN. The frame's ``attrs["provenance"]`` maps
         each source used to a Provenance record.
     """
+    # its own thread, so it does not inherit the caller's budget
     maybe_update()
+    with fetch_budget(deadline):
+        return _load_data(
+            station_id, start, end, frequency, variables, source, sources,
+            read_from_cache, write_to_cache, fetch_from_web, raise_when_empty,
+        )
+
+
+def _load_data(
+    station_id, start, end, frequency, variables, source, sources,
+    read_from_cache, write_to_cache, fetch_from_web, raise_when_empty,
+):
     validate_range(start, end)
 
     # the frequency vocabulary is pandas', bound by delegation: pandas
@@ -488,10 +517,11 @@ def load_data(
             loader = _load_normals
         else:
             raise ValueError("Unknown source kind: {}".format(adapter.kind))
-        group_df, group_warnings = loader(
-            adapter, station_id, start, end, tuple(group_variables),
-            read_from_cache, write_to_cache, fetch_from_web,
-        )
+        with collecting_stale() as stale_years:
+            group_df, group_warnings = loader(
+                adapter, station_id, start, end, tuple(group_variables),
+                read_from_cache, write_to_cache, fetch_from_web,
+            )
         warnings.extend(group_warnings)
         frames.append(group_df)
         provenance[adapter.name] = Provenance(
@@ -501,6 +531,7 @@ def load_data(
             station_id=station_id,
             distance_meters=None,
             payload={},
+            stale=bool(stale_years),
         )
 
     df = pd.concat(frames, axis=1)[list(requested)]

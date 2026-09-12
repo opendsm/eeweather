@@ -6,6 +6,8 @@ from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 import pytest
+
+from eeweather.exceptions import FetchError
 import pytz
 
 from eeweather.cache import CacheVolatility
@@ -14,6 +16,7 @@ from eeweather.sources.ghcnh import GHCNhSource
 from eeweather.sources.pipeline import (
     _datetime_is_utc,
     align_to_range,
+    collecting_stale,
     data_gap_warnings,
     deserialize_hourly_data,
     load_year,
@@ -536,3 +539,112 @@ def test_data_gap_warnings_empty_series_is_silent():
     ts = pd.Series([], dtype=float, index=pd.DatetimeIndex([], tz="UTC"))
 
     assert data_gap_warnings(ts, "ghcnh", "temperature") == []
+
+
+def _stale_2007_block(store):
+    """A cached 2007 block old enough to want refreshing.
+
+    A past year is only refreshable when the source says its tail may still
+    be arriving, which is what LATE_PUBLISHING plus a missing tail means.
+    """
+    partial = _hourly_frame("2007-12-01", "2007-12-31 23:00", value=11.0)
+    partial.iloc[-240:] = float("nan")
+    _cache_block(store, partial, days_ago=2)
+
+
+def test_load_year_serves_stale_data_when_the_fetch_fails(
+    monkeypatch_key_value_store
+):
+    """A stale entry that answers the request beats no data at all: the
+    values are real, only their freshness is in doubt."""
+    _stale_2007_block(monkeypatch_key_value_store)
+
+    def failing_fetch(variables):
+        raise FetchError("ghcnh", station_id=STATION, year=2007)
+
+    df = load_year(
+        CACHE_KEY, 2007, ("temperature",), failing_fetch, True,
+        True, True, True, LATE_PUBLISHING,
+    )
+
+    assert df is not None
+    assert list(df.columns) == ["temperature"]
+    assert df.temperature.notna().any()
+
+
+def test_load_year_notes_the_year_it_served_stale(monkeypatch_key_value_store):
+    """The stale serve is invisible in the returned frame, so load_year
+    records the data year for the caller building provenance."""
+    _stale_2007_block(monkeypatch_key_value_store)
+
+    def failing_fetch(variables):
+        raise FetchError("ghcnh", station_id=STATION, year=2007)
+
+    with collecting_stale() as stale_years:
+        df = load_year(
+            CACHE_KEY, 2007, ("temperature",), failing_fetch, True,
+            True, True, True, LATE_PUBLISHING,
+        )
+
+    assert df is not None
+    assert stale_years == [2007]
+
+
+def test_load_year_notes_nothing_on_a_successful_fetch(monkeypatch_key_value_store):
+    _stale_2007_block(monkeypatch_key_value_store)
+
+    def good_fetch(variables):
+        frame = _hourly_frame("2007-01-01", "2007-12-31 23:00", value=11.0)
+        return frame[list(variables)]
+
+    with collecting_stale() as stale_years:
+        load_year(
+            CACHE_KEY, 2007, ("temperature",), good_fetch, True,
+            True, True, True, LATE_PUBLISHING,
+        )
+
+    assert stale_years == []
+
+
+def test_load_year_reraises_fetch_error_when_nothing_is_cached(
+    monkeypatch_key_value_store
+):
+    def failing_fetch(variables):
+        raise FetchError("ghcnh", station_id=STATION, year=2007)
+
+    with pytest.raises(FetchError):
+        load_year(
+            CACHE_KEY, 2007, ("temperature",), failing_fetch, True,
+            True, True, True, LATE_PUBLISHING,
+        )
+
+
+def test_load_year_reraises_when_the_stale_block_lacks_a_variable(
+    monkeypatch_key_value_store
+):
+    _stale_2007_block(monkeypatch_key_value_store)
+
+    def failing_fetch(variables):
+        raise FetchError("ghcnh", station_id=STATION, year=2007)
+
+    with pytest.raises(FetchError):
+        load_year(
+            CACHE_KEY, 2007, ("temperature", "wind_speed"), failing_fetch, True,
+            True, True, True, LATE_PUBLISHING,
+        )
+
+
+def test_load_year_does_not_swallow_a_non_transport_failure(
+    monkeypatch_key_value_store
+):
+    """Only FetchError degrades; a malformed response still raises."""
+    _stale_2007_block(monkeypatch_key_value_store)
+
+    def malformed_fetch(variables):
+        raise ValueError("non-csv body")
+
+    with pytest.raises(ValueError):
+        load_year(
+            CACHE_KEY, 2007, ("temperature",), malformed_fetch, True,
+            True, True, True, LATE_PUBLISHING,
+        )

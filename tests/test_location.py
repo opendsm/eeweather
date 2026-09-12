@@ -1,15 +1,17 @@
 import gzip
 import io
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
 import pytest
+import requests
 
 from eeweather import WeatherLocation
-from eeweather.exceptions import DataNotAvailableError
+from eeweather.exceptions import DataNotAvailableError, FetchDeadlineExceeded
 from eeweather.sources import Feed, Source, StationSource, Variable, register
-from eeweather.sources import engine, vocabulary
+from eeweather.sources import budget, engine, vocabulary
 from eeweather.sources.base import Provenance
 from eeweather.sources.engine import (
     _route,
@@ -43,6 +45,39 @@ def test_location_resolves_nearest_station(mock_api_transport):
     assert record.distance_meters < 1000
     assert record.variables == ("temperature",)
     assert df.attrs["provenance"] == location.provenance
+
+
+def test_location_load_data_honours_a_deadline(monkeypatch):
+    # the primary entry point routes around engine.load_data, so its own
+    # deadline wrap is what bounds an unresponsive upstream here
+    location = WeatherLocation(USC_LATITUDE, USC_LONGITUDE)
+    start = datetime(2007, 1, 1, tzinfo=timezone.utc)
+    end = datetime(2007, 1, 2, tzinfo=timezone.utc)
+
+    def slow_and_failing(url, params=None, **kwargs):
+        time.sleep(0.05)
+        raise requests.ConnectionError("no route")
+
+    monkeypatch.setattr("eeweather.sources.ghcnh.source._get", slow_and_failing)
+
+    with pytest.raises(FetchDeadlineExceeded):
+        location.load_data(
+            start, end, deadline=0.08,
+            read_from_cache=False, write_to_cache=False,
+        )
+
+    # and the budget is torn down, not left set on the thread
+    assert budget.remaining() is None
+
+
+def test_location_load_data_leaves_no_budget_behind(mock_api_transport):
+    location = WeatherLocation(USC_LATITUDE, USC_LONGITUDE)
+    start = datetime(2007, 1, 1, tzinfo=timezone.utc)
+    end = datetime(2007, 1, 2, tzinfo=timezone.utc)
+
+    location.load_data(start, end, deadline=600)
+
+    assert budget.remaining() is None
 
 
 def test_location_default_sources():

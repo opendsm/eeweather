@@ -280,6 +280,7 @@ def test_provenance_station_fields_and_payload_are_optional():
     assert record.station_id is None
     assert record.distance_meters is None
     assert record.payload == {}
+    assert record.stale is False
 
     with_payload = record._replace(payload={"model_version": "v1"})
 
