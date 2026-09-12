@@ -202,6 +202,7 @@ def test_build_places_adds_the_vintage_and_stamps_it(census, geography_db):
     meta = dict(conn.execute("select key, value from meta"))
     assert meta["place_vintage"] == str(YEAR)
     assert meta["place_source"] == "census-gazetteer"
+    conn.close()
 
 
 def test_build_places_retains_the_earlier_vintage(census, geography_db):
@@ -227,6 +228,7 @@ def test_build_places_retains_the_earlier_vintage(census, geography_db):
         " order by vintage"
     ).fetchall()
     assert kept == [(2010,), (YEAR,)]
+    conn.close()
 
 
 def test_build_places_is_idempotent_for_a_year(census, geography_db):
@@ -240,6 +242,7 @@ def test_build_places_is_idempotent_for_a_year(census, geography_db):
         "select count(*) from place where kind = 'zcta' and vintage = ?",
         (YEAR,),
     ).fetchone()[0] == 3
+    conn.close()
 
 
 def test_build_places_recomputes_zone_assignments(census, geography_db):
@@ -255,19 +258,18 @@ def test_build_places_recomputes_zone_assignments(census, geography_db):
     )
     # only the point inside the zone geometry is assigned
     assert zones == {"00001": "Z1"}
+    conn.close()
 
 
 def test_build_places_leaves_zone_geometries_alone(census, geography_db):
-    before = sqlite3.connect(geography_db).execute(
-        "select count(*) from zone"
-    ).fetchone()[0]
+    conn = sqlite3.connect(geography_db)
+    before = conn.execute("select count(*) from zone").fetchone()[0]
 
     build_places(year=YEAR, geography_path=str(geography_db))
 
-    after = sqlite3.connect(geography_db).execute(
-        "select count(*) from zone"
-    ).fetchone()[0]
+    after = conn.execute("select count(*) from zone").fetchone()[0]
     assert before == after == 1
+    conn.close()
 
 
 def test_build_places_refuses_a_partial_download(census, geography_db, monkeypatch):
