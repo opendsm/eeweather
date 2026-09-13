@@ -18,11 +18,20 @@ import logging
 from logging import NullHandler
 
 from .__version__ import __version__
+from .exceptions import FetchDeadlineExceeded, FetchError
 from .location import WeatherLocation
+from .sources.budget import fetch_budget
 from .station import WeatherStation
 
 
 
-__all__ = ("WeatherLocation", "WeatherStation", "__version__")
+__all__ = (
+    "WeatherLocation",
+    "WeatherStation",
+    "FetchError",
+    "FetchDeadlineExceeded",
+    "fetch_budget",
+    "__version__",
+)
 
 logging.getLogger(__name__).addHandler(NullHandler())

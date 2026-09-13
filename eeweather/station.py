@@ -203,6 +203,7 @@ class WeatherStation(object):
         read_from_cache: bool = True,
         write_to_cache: bool = True,
         fetch_from_web: bool = True,
+        deadline: float | None = None,
     ):
         """Load this station's weather data between two dates (inclusive).
 
@@ -236,6 +237,10 @@ class WeatherStation(object):
             Whether or not to write newly loaded data to cache.
         fetch_from_web : bool
             Whether or not to fetch data from the web.
+        deadline : float, optional
+            Wall-clock seconds this request may spend on the network,
+            after which it raises FetchDeadlineExceeded. Unbounded by
+            default.
 
         Returns
         -------
@@ -257,6 +262,7 @@ class WeatherStation(object):
             read_from_cache=read_from_cache,
             write_to_cache=write_to_cache,
             fetch_from_web=fetch_from_web,
+            deadline=deadline,
         )
         self.provenance = df.attrs["provenance"]
 
