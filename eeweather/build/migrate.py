@@ -72,6 +72,12 @@ ZONE_SYSTEMS = (
     "ca_climate_zone",
 )
 
+# The packaged ZCTA places are the 2010 ZCTA definition delivered by the
+# GENZ2016 cartographic release (see build.geography); that release year is
+# their vintage. A Census rebuild (build_places) appends a newer vintage
+# beside them rather than replacing them, and readers resolve the newest.
+LEGACY_PLACE_VINTAGE = 2016
+
 
 def _connect_fresh(path, schema):
     if os.path.exists(path):
@@ -182,15 +188,15 @@ def _migrate_places(src, geography):
     ).fetchall()
     for zcta_id, state, latitude, longitude, *zones in rows:
         geography.execute(
-            "insert into place values (?, ?, ?, ?, ?, ?)",
-            ("zcta", zcta_id, "US", state,
+            "insert into place values (?, ?, ?, ?, ?, ?, ?)",
+            (LEGACY_PLACE_VINTAGE, "zcta", zcta_id, "US", state,
              _float_or_none(latitude), _float_or_none(longitude)),
         )
         for system, zone_id in zip(ZONE_SYSTEMS, zones):
             if zone_id is not None:
                 geography.execute(
-                    "insert into place_zone values (?, ?, ?, ?)",
-                    ("zcta", zcta_id, system, str(zone_id)),
+                    "insert into place_zone values (?, ?, ?, ?, ?)",
+                    (LEGACY_PLACE_VINTAGE, "zcta", zcta_id, system, str(zone_id)),
                 )
 
 
@@ -236,6 +242,20 @@ def _stamp_refreshed(ghcnh):
     )
 
 
+def _stamp_geography(geography, vintage):
+    """Record the packaged pack's vintage, the same shape build_places stamps."""
+    geography.execute(
+        "create table if not exists meta (key text primary key, value text)"
+        " without rowid"
+    )
+    for key, value in (
+        ("place_vintage", str(vintage)),
+        ("place_source", "census-genz2016"),
+        ("refreshed_at", datetime.now(timezone.utc).strftime("%Y-%m-%d")),
+    ):
+        geography.execute("insert or replace into meta values (?, ?)", (key, value))
+
+
 def migrate(source_path, dest_dir):
     """Build the packaged data files from a single-file ghcn-keyed
     database, writing identifiers.db, geography_us.db, ghcnh.db, tmy3.db,
@@ -257,6 +277,7 @@ def migrate(source_path, dest_dir):
     _migrate_zones(src, geography)
     _migrate_normals(src, tmy3, cz2010)
     _stamp_refreshed(ghcnh)
+    _stamp_geography(geography, LEGACY_PLACE_VINTAGE)
 
     counts = {}
     for name, conn, tables in (

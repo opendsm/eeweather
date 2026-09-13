@@ -1,0 +1,76 @@
+name: Refresh geography
+
+# Separate from refresh-registry because the cadence is different: the
+# registry's inventory moves continuously, while Census publishes the
+# Gazetteer and the cartographic state layer once a year. Running this
+# monthly would open eleven no-op pull requests.
+on:
+  schedule:
+    # annually, after Census has published the new vintage
+    - cron: "0 6 15 10 *"
+  workflow_dispatch:
+    inputs:
+      year:
+        description: "Census vintage to build (default: newest published)"
+        required: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install package
+        run: pip install -e .[dev]
+      - name: Rebuild places from Census sources
+        # the dispatch input goes through env, not interpolated into the
+        # shell of a contents:write job; ${YEAR:+$YEAR} expands to nothing
+        # when empty, so the scheduled run gets a bare --geography (newest)
+        # and a manual run gets --geography <year>
+        env:
+          YEAR: ${{ inputs.year }}
+        run: python -m eeweather.build --geography ${YEAR:+$YEAR}
+      # refresh PRs opened with GITHUB_TOKEN do not trigger pull_request
+      # workflows, so the suite must pass here, against the rebuilt pack
+      - name: Run the test suite against the rebuilt geography
+        run: pytest tests/ -o addopts=
+      # Same rolling release the registry refresh publishes to, so an
+      # installed client picks the new geography up on its next update
+      # instead of waiting for a release. Without this the rebuild only
+      # reaches whoever upgrades the package, which is how the packaged
+      # pack came to be fifteen years stale.
+      - name: Publish rebuilt geography to the rolling release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create registry-latest \
+            --title "Latest registry data" \
+            --notes "Refreshed registry data, published by the scheduled workflow. Client auto-update downloads these files when local data is stale." \
+            || true
+          gh release upload registry-latest \
+            eeweather/registry/geography_us.db \
+            --clobber
+      - name: Open pull request with the rebuilt geography
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: Rebuild ZCTA places from Census sources
+          title: Rebuild ZCTA places from Census sources
+          body: |
+            Scheduled build of a new Census vintage of the geography pack's
+            ZCTA places, from the Gazetteer (internal points) and the
+            ZCTA-to-county relationship file (states), stamped with the
+            vintage in `meta`. Earlier vintages are retained, not replaced,
+            and zone geometries are untouched.
+
+            Review the new vintage's place counts and subdivisions before
+            merging: ZCTAs are added and retired between decades, and the
+            internal points move year to year.
+          branch: automation/refresh-geography
+          delete-branch: true
+          add-paths: |
+            eeweather/registry/geography_us.db

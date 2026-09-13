@@ -32,19 +32,29 @@ def get_station_ids(state=None):
 
 
 def get_zcta_ids(state=None):
-    """Codes of all ZCTA places, optionally filtered by subdivision."""
+    """Codes of all ZCTA places, optionally filtered by subdivision.
+
+    A pack may retain more than one geography vintage; the codes returned
+    are the current set -- the newest vintage's -- to match the vintage
+    :func:`get_place` resolves a single code against.
+    """
     proxy = metadata_db_connection_proxy
     conn = proxy.get_connection()
     zcta_ids = set()
     for alias in proxy.geography_aliases:
+        newest = (
+            "vintage = (select max(vintage) from {}.place"
+            " where kind = 'zcta')".format(alias)
+        )
         if state is None:
             cur = conn.execute(
-                "select code from {}.place where kind = 'zcta'".format(alias)
+                "select code from {}.place where kind = 'zcta'"
+                " and {}".format(alias, newest)
             )
         else:
             cur = conn.execute(
                 "select code from {}.place where kind = 'zcta'"
-                " and subdivision = ?".format(alias),
+                " and subdivision = ? and {}".format(alias, newest),
                 (state,),
             )
         zcta_ids.update(row[0] for row in cur.fetchall())
@@ -53,13 +63,19 @@ def get_zcta_ids(state=None):
 
 
 def get_place(kind, code):
-    """Registry metadata for a place: the place row fields plus ``zones``."""
+    """Registry metadata for a place: the place row fields plus ``zones``.
+
+    A pack may hold the code under more than one geography vintage; the
+    newest is resolved, and its zone assignments are read at that same
+    vintage so the two never cross.
+    """
     proxy = metadata_db_connection_proxy
     conn = proxy.get_connection()
     for alias in proxy.geography_aliases:
         cur = conn.cursor()
         cur.execute(
-            "select * from {}.place where kind = ? and code = ?".format(alias),
+            "select * from {}.place where kind = ? and code = ?"
+            " order by vintage desc limit 1".format(alias),
             (kind, code),
         )
         row = cur.fetchone()
@@ -69,8 +85,8 @@ def get_place(kind, code):
         place["zones"] = dict(
             conn.execute(
                 "select system, zone_id from {}.place_zone"
-                " where kind = ? and code = ?".format(alias),
-                (kind, code),
+                " where vintage = ? and kind = ? and code = ?".format(alias),
+                (place["vintage"], kind, code),
             ).fetchall()
         )
 

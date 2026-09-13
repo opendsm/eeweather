@@ -23,7 +23,7 @@ import pandas as pd
 import eeweather.cache
 from ..exceptions import DataNotAvailableError, EEWeatherWarning
 from ..registry.identifiers import translate
-from ..registry.update import maybe_update
+from ..registry.update import maybe_update, refreshed_at
 from .base import Provenance
 from .cz2010 import CZ2010Source
 from .ghcnh import GHCNhSource
@@ -481,6 +481,8 @@ def load_data(
     warnings = []
     frames = []
     provenance = {}
+    # one stamp for the whole request; every source resolves through the registry
+    registry_vintage = refreshed_at()
     for adapter, group_variables in groups.items():
         if adapter.kind == "observations":
             loader = _load_observations
@@ -501,6 +503,7 @@ def load_data(
             station_id=station_id,
             distance_meters=None,
             payload={},
+            registry_vintage=registry_vintage,
         )
 
     df = pd.concat(frames, axis=1)[list(requested)]

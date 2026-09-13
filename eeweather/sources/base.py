@@ -23,25 +23,40 @@ from ..registry.db import metadata_db_connection_proxy
 
 _ProvenanceFields = namedtuple(
     "Provenance",
-    ["kind", "source", "variables", "station_id", "distance_meters", "payload"],
+    [
+        "kind",
+        "source",
+        "variables",
+        "station_id",
+        "distance_meters",
+        "payload",
+        "registry_vintage",
+    ],
 )
 
 
 class Provenance(_ProvenanceFields):
     """How a value was produced. Station fields are None for non-station
     sources; ``payload`` is always a dict, empty unless the source adds
-    source-specific detail (e.g. a grid cell or interpolation method)."""
+    source-specific detail (e.g. a grid cell or interpolation method).
+    ``registry_vintage`` records the station registry snapshot the run
+    resolved against (the ``refreshed_at`` datetime of the packaged
+    registry), or None for sources that do not resolve through it; because
+    the registry updates itself, it is what makes a result reproducible by
+    record rather than merely by code."""
     __slots__ = ()
 
     def __new__(
         cls, kind, source, variables,
         station_id=None, distance_meters=None, payload=None,
+        registry_vintage=None,
     ):
         if payload is None:
             payload = {}
 
         record = super().__new__(
-            cls, kind, source, variables, station_id, distance_meters, payload
+            cls, kind, source, variables, station_id, distance_meters,
+            payload, registry_vintage,
         )
 
         return record

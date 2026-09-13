@@ -10,9 +10,13 @@ EXPECTED_TABLES = {
         "station_identifier": ["namespace", "external_id", "station_id", "recent"],
     },
     "geography_us": {
-        "place": ["kind", "code", "country", "subdivision", "latitude", "longitude"],
-        "place_zone": ["kind", "code", "system", "zone_id"],
+        "place": [
+            "vintage", "kind", "code", "country", "subdivision",
+            "latitude", "longitude",
+        ],
+        "place_zone": ["vintage", "kind", "code", "system", "zone_id"],
         "zone": ["system", "zone_id", "name", "geometry"],
+        "meta": ["key", "value"],
     },
     "ghcnh": {
         "stations": [
