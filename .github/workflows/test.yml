@@ -25,7 +25,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install tox
-        run: pip install tox
+        run: pip install tox tox-uv
       - name: Enforce the coverage floor
         run: tox -e coverage
 
@@ -45,8 +45,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        python: ["3.11", "3.12", "3.13", "3.14"]
         os: [ubuntu-latest, windows-latest, macos-latest]
+        resolution: [highest]
+        include:
+          # every direct dependency at its declared floor; the differing
+          # `resolution` value makes this a new 3.11 / ubuntu combination, so
+          # it is covered by `build (all)`
+          - python: "3.11"
+            os: ubuntu-latest
+            resolution: lowest
+            toxenv: minimum
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -56,9 +65,14 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Install tox
-        run: pip install tox
+        run: pip install tox tox-uv
+      - name: Check uv.lock is current
+        if: matrix.resolution == 'lowest'
+        # before tox: its uv plugin leaves a `.venv` pointer file in the checkout that uv
+        # refuses as a project environment; uv is on PATH because tox-uv depends on it
+        run: uv lock --check
       - name: Run tox
-        run: tox -e ${{ matrix.python }}
+        run: tox -e ${{ matrix.toxenv || matrix.python }}
 
   # The publish workflow never runs on pull requests, so build the distribution
   # here to catch packaging breakage before release day

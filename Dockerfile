@@ -14,10 +14,11 @@ ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy \
 
 WORKDIR /app
 
-# deps layer (cacheable): resolve and install dependencies only
-COPY pyproject.toml README.md LICENSE /app/
+# deps layer (cacheable): install the locked dependencies only; the build fails
+# if uv.lock is out of date with pyproject.toml
+COPY pyproject.toml README.md LICENSE uv.lock /app/
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip compile pyproject.toml --extra dev -o /tmp/requirements.txt && \
+    uv export --locked --no-emit-project --extra dev -o /tmp/requirements.txt && \
     uv pip install --system -r /tmp/requirements.txt
 
 COPY eeweather/ /app/eeweather

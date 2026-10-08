@@ -149,7 +149,7 @@ This release is a redesign; the public API is not compatible with 0.3.x.
   empties it). ISD-era and 0.3.x cache entries are never served.
 * Public type hints ship with a `py.typed` marker.
 * Modernized packaging: pyproject.toml with hatchling replaces setup.py,
-  Pipfile, and MANIFEST.in; python >=3.10; sqlalchemy, click, and pytz
+  Pipfile, and MANIFEST.in; python >=3.11; sqlalchemy, click, and pytz
   are no longer dependencies; platformdirs and shapely are. The CLI,
   plotting helpers, sphinx docs (documentation moves to opendsm.energy),
   and FTP-era fetch code are deleted.
@@ -168,9 +168,23 @@ This release is a redesign; the public API is not compatible with 0.3.x.
   the publish job, which holds only the OIDC token; the release workflow
   triggers on `published`; CI builds and checks the distribution on
   every pull request; Dependabot proposes monthly grouped updates for
-  actions and Docker images; the Docker image installs uv from a digest-
-  pinned stage and runs as an unprivileged user (`UID` build argument,
-  default 1000).
+  actions and Docker images; the Docker image installs uv from a
+  digest-pinned stage and runs as an unprivileged user (`UID` build
+  argument, default 1000).
+* Drop Python 3.10 support: `requires-python` is now `>=3.11`, the CI
+  matrix covers 3.11 to 3.14 and the publish workflow builds on 3.12.
+* Dependency floors are now the oldest versions that pass the suite
+  against current transitive releases: `numpy>=1.26,<3`,
+  `pandas>=2.2.2,<4` (2.2.0 and 2.2.1 warn at import when pyarrow is
+  absent), `pyproj>=3.4` (first release with Python 3.11 wheels),
+  `shapely>=2.1` (2.0.x warns on invalid distance values, fatal under
+  warnings-as-errors), and `requests>=2.33.0`, the floor at which no
+  known security advisory applies. `uv.lock` is committed, the Docker
+  image installs its dependencies from it, and Dependabot refreshes it
+  monthly. A new `minimum` tox environment (tox provisions tox-uv
+  itself) resolves every direct dependency, including the test tooling,
+  to its declared floor; CI runs it on Python 3.11 and checks that
+  `uv.lock` is current.
 
 0.3.29
 ------
