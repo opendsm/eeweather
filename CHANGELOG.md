@@ -161,6 +161,17 @@ This release is a redesign; the public API is not compatible with 0.3.x.
   which numpy 2.5 deprecates; under ``filterwarnings = ["error"]`` that
   failed every coarser- and finer-than-hourly resample path. pandas 3.0
   fixes it upstream, so this only affects pandas 2.x.
+* Repository hardening: `SECURITY.md` points at private vulnerability
+  reporting; GitHub Actions are pinned to commit SHAs; workflow tokens
+  are read-only except in the registry refresh job, which uploads the
+  rolling release assets, pushes a branch and opens a pull request, and
+  the publish job, which holds only the OIDC token; the release workflow
+  triggers on `published`; CI builds and checks the distribution on
+  every pull request; Dependabot proposes monthly grouped updates for
+  actions and Docker images; the Docker image installs uv from a digest-
+  pinned stage and runs as an unprivileged user (`UID` build argument,
+  default 1000).
+
 0.3.29
 ------
 
