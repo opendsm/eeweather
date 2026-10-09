@@ -1,7 +1,6 @@
 import gzip
 import json
 import os
-import re
 import tempfile
 
 from pathlib import Path
@@ -130,14 +129,14 @@ def mock_request_text_tmy3(url):
         "https://storage.googleapis.com/openeemeter-public-resources/"
         "tmy3_archive/722880TYA.CSV"
     )
-    if re.match(match_url, url):
+    if url == match_url:
         return _fixture_ascii("722880TYA.CSV")
 
 
 def mock_request_text_cz2010(url):
     match_url = "https://storage.googleapis.com/oee-cz2010/csv/722880_CZ2010.CSV"
 
-    if re.match(match_url, url):
+    if url == match_url:
         return _fixture_ascii("722880_CZ2010.CSV")
 
 
