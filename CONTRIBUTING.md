@@ -10,6 +10,44 @@ Guidelines
 * Adding a variable to the vocabulary: see `docs/expanding-the-vocabulary.md`.
 * Commit messages should start with a capital letter ("Updated models", not "updated models").
 * Write new tests and run old tests! Make sure that % test coverage does not decrease.
+* Contributions are reviewed by a maintainer before acceptance. To facilitate
+  review, please make a [pull request](https://github.com/opendsm/eeweather/pulls/new)
+  against `master` from a branch prefixed `feature/` (new features) or `fix/`
+  (bug fixes), describe the change, and follow the checklist in the pull
+  request template.
+* Contributions that add new required dependencies to the library will be
+  given a more thorough review to ensure that those dependency additions
+  1) do not pose a security risk and 2) are absolutely necessary.
+
+Contributor maintenance responsibility
+--------------------------------------
+
+Contributions of all kinds are encouraged, and we do not require contributors
+to be responsible for ongoing support of patches they make. However, because
+we accept "toss over the wall" contributions, contributions deemed by the
+maintainers to be too difficult to maintain will not be accepted.
+
+Testing
+-------
+
+Please write tests for all new features. Test coverage must not fall. The
+floor is `fail_under` in `pyproject.toml`, and CI's coverage job checks it
+with `tox -e coverage`. Run the suite locally with
+`docker-compose run --rm test`.
+
+License
+-------
+
+This project is licensed under [Apache 2.0](LICENSE).
+
+Developer Certificate of Origin
+-------------------------------
+
+This project uses the
+[Developer Certificate of Origin](https://developercertificate.org/). Sign off
+every commit with `git commit -s`, which adds a `Signed-off-by` line with your
+name and email. The DCO check on each pull request fails when a commit lacks
+it.
 
 Release process
 ---------------

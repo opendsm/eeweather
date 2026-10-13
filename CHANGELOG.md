@@ -190,6 +190,11 @@ This release is a redesign; the public API is not compatible with 0.3.x.
   `tox -e coverage` for coverage. Fix branches are prefixed `fix/`. The
   bug report template asks for a reproducing snippet and the eeweather,
   pandas and Python versions.
+* `CONTRIBUTING.md` gains the sections opendsm's guide has: maintainer
+  review and branch naming, the extra review for new required
+  dependencies, contributor maintenance responsibility, testing (the
+  coverage floor is `fail_under` in `pyproject.toml`), the license, and
+  Developer Certificate of Origin sign-off.
 
 0.3.29
 ------
