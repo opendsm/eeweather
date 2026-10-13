@@ -18,6 +18,10 @@ Guidelines
 * Contributions that add new required dependencies to the library will be
   given a more thorough review to ensure that those dependency additions
   1) do not pose a security risk and 2) are absolutely necessary.
+* Contributions that allow for data exfiltration will not be accepted. The
+  library sends user data only to the data sources it documents, and only what
+  a request needs (e.g., a site's coordinates to NASA POWER, or a station
+  identifier and date range to NOAA).
 
 Author responsibility
 ---------------------

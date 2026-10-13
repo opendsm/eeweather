@@ -210,6 +210,9 @@ This release is a redesign; the public API is not compatible with 0.3.x.
   SPDX license header every source file must carry (adding it to the
   existing files is tracked in #115),
   the OpenDSM charter, and a list of other resources.
+* `CONTRIBUTING.md` gains opendsm's data-exfiltration rule. It states
+  that the library sends user data only to the data sources it
+  documents, and only what a request needs.
 
 0.3.29
 ------
