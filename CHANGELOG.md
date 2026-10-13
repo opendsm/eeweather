@@ -195,6 +195,15 @@ This release is a redesign; the public API is not compatible with 0.3.x.
   dependencies, contributor maintenance responsibility, testing (the
   coverage floor is `fail_under` in `pyproject.toml`), the license, and
   Developer Certificate of Origin sign-off.
+* `CONTRIBUTING.md` gains an author-responsibility section. It states
+  that AI tools may be used for any part of a contribution without
+  disclosure and that the author is responsible for all of it. Authors
+  must be able to explain their changes in review, and the sign-off
+  covers every part of the contribution. Pull request descriptions claim
+  only what was checked, and existing tests and snapshots are not
+  loosened to make a failing test pass. Bug fixes come with a regression
+  test. The pull request template asks for the reason behind changed
+  tests or snapshots, and `SECURITY.md` asks reporters for a reproducer.
 
 0.3.29
 ------

@@ -8,6 +8,7 @@ Please review the [guidelines for contributing](../CONTRIBUTING.md) to this repo
 - [ ] Make sure code style follows PEP 008 using `docker-compose run --rm blacken`.
 - [ ] Make sure `ruff check eeweather tests` passes (CI runs the same check).
 - [ ] Make sure that new public functions and classes have [numpy-style docstrings](https://numpydoc.readthedocs.io/en/latest/format.html) and are documented in [docs/api.md](../docs/api.md).
+- [ ] If this pull request changes an existing test or snapshot, the description says why.
 - [ ] Make sure that all git commits have the "Signed-off-by" message for
   the Developer Certificate of Origin. When you're making a commit, just add
   the `-s/--signoff` flag (e.g., `git commit -s`).
