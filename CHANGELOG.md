@@ -204,6 +204,12 @@ This release is a redesign; the public API is not compatible with 0.3.x.
   loosened to make a failing test pass. Bug fixes come with a regression
   test. The pull request template asks for the reason behind changed
   tests or snapshots, and `SECURITY.md` asks reporters for a reproducer.
+* `CONTRIBUTING.md` and the bug report template now mirror opendsm's.
+  The guide gains the test command cheat sheet and fixture guidance,
+  the mailing list, the full Developer Certificate of Origin text, the
+  SPDX license header every source file must carry (adding it to the
+  existing files is tracked in #115),
+  the OpenDSM charter, and a list of other resources.
 
 0.3.29
 ------
