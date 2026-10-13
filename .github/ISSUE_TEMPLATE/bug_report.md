@@ -1,27 +1,34 @@
 ---
 name: Bug report
-about: Create a report to help us improve
+about: A report of or request to fix an issue in the eeweather library
 
 ---
+
+Bug reports must:
+
+1. Include a short, self-contained Python snippet that reproduces the problem,
+   with the full traceback if one is raised.
+2. Include the versions of eeweather (`eeweather.__version__`), pandas and
+   Python, and your operating system.
+3. Explain why the current behavior is wrong and what you expect instead.
 
 **Describe the bug**
 A clear and concise description of what the bug is.
 
 **To Reproduce**
-Steps to reproduce the behavior:
-1. Go to '...'
-2. Click on '....'
-3. Scroll down to '....'
-4. See error
+```python
+import eeweather
+...
+```
 
 **Expected behavior**
 A clear and concise description of what you expected to happen.
 
-**Screenshots**
-If applicable, add screenshots to help explain your problem.
-
-**Desktop (please complete the following information):**
- - OS: [e.g. macOS]
+**Versions**
+ - eeweather:
+ - pandas:
+ - Python:
+ - OS:
 
 **Additional context**
 Add any other context about the problem here.

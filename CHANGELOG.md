@@ -185,6 +185,11 @@ This release is a redesign; the public API is not compatible with 0.3.x.
   itself) resolves every direct dependency, including the test tooling,
   to its declared floor; CI runs it on Python 3.11 and checks that
   `uv.lock` is current.
+* The pull request template names the checks the repository runs: the
+  ruff check, `docs/api.md` in place of the Sphinx build, and
+  `tox -e coverage` for coverage. Fix branches are prefixed `fix/`. The
+  bug report template asks for a reproducing snippet and the eeweather,
+  pandas and Python versions.
 
 0.3.29
 ------

@@ -4,7 +4,8 @@ Contributing
 Guidelines
 ----------
 
-* Make sure you follow PEP 008 style guide conventions.
+* Make sure you follow PEP 008 style guide conventions. CI runs
+  `ruff check eeweather tests` for logic errors.
 * Adding a weather-data source: see `docs/adding-a-source.md`.
 * Adding a variable to the vocabulary: see `docs/expanding-the-vocabulary.md`.
 * Commit messages should start with a capital letter ("Updated models", not "updated models").
@@ -15,7 +16,7 @@ Release process
 
 Pre-release
 
-1. create branch off of master named `feature/<examplefeature>` or `bugfix/<>` and make desired changes.
+1. create branch off of master named `feature/<examplefeature>` or `fix/<>` and make desired changes.
 2. edit CHANGELOG.md with changes under a new section called `Development`
 3. create, review, and merge PR for feature/examplefeature
 4. repeat steps 1-3 if desired for other features as convenient, though preference is for frequent version bumps
