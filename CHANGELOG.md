@@ -185,6 +185,34 @@ This release is a redesign; the public API is not compatible with 0.3.x.
   itself) resolves every direct dependency, including the test tooling,
   to its declared floor; CI runs it on Python 3.11 and checks that
   `uv.lock` is current.
+* The pull request template names the checks the repository runs: the
+  ruff check, `docs/api.md` in place of the Sphinx build, and
+  `tox -e coverage` for coverage. Fix branches are prefixed `fix/`. The
+  bug report template asks for a reproducing snippet and the eeweather,
+  pandas and Python versions.
+* `CONTRIBUTING.md` gains the sections opendsm's guide has: maintainer
+  review and branch naming, the extra review for new required
+  dependencies, contributor maintenance responsibility, testing (the
+  coverage floor is `fail_under` in `pyproject.toml`), the license, and
+  Developer Certificate of Origin sign-off.
+* `CONTRIBUTING.md` gains an author-responsibility section. It states
+  that AI tools may be used for any part of a contribution without
+  disclosure and that the author is responsible for all of it. Authors
+  must be able to explain their changes in review, and the sign-off
+  covers every part of the contribution. Pull request descriptions claim
+  only what was checked, and existing tests and snapshots are not
+  loosened to make a failing test pass. Bug fixes come with a regression
+  test. The pull request template asks for the reason behind changed
+  tests or snapshots, and `SECURITY.md` asks reporters for a reproducer.
+* `CONTRIBUTING.md` and the bug report template now mirror opendsm's.
+  The guide gains the test command cheat sheet and fixture guidance,
+  the mailing list, the full Developer Certificate of Origin text, the
+  SPDX license header every source file must carry (adding it to the
+  existing files is tracked in #115),
+  the OpenDSM charter, and a list of other resources.
+* `CONTRIBUTING.md` gains opendsm's data-exfiltration rule. It states
+  that the library sends user data only to the data sources it
+  documents, and only what a request needs.
 
 0.3.29
 ------
